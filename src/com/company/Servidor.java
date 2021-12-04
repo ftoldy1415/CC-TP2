@@ -1,15 +1,13 @@
-
 package com.company;
 import java.io.*;
-import java.net.ServerSocket;
-import java.net.Socket;
+import java.net.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 
-public class Servidor {
+public class Servidor implements Runnable{
 
 
     public static boolean compare (BasicFileAttributes attr, DataInputStream in) throws IOException {
@@ -29,42 +27,58 @@ public class Servidor {
         return equals;
     }
 
-
-
-    public static void main(String[] args) {
-
-        Path file = Path.of("/home/ftoldy/Área de Trabalho/prolog/ficha1.pl");
-
-        BasicFileAttributes attr = null;
+    public void confirmConnection(InetAddress ip, int port ){
         try {
-            attr = Files.readAttributes(file, BasicFileAttributes.class);
+
+            DatagramSocket confirmSocket = new DatagramSocket(port, ip);
+            byte[] confirmData = new byte[1024];
+            confirmData[0] = 0;
+            DatagramPacket response = new DatagramPacket(confirmData,confirmData.length);
+            confirmSocket.send(response);
+            confirmSocket.close();
+
+        } catch (SocketException e) {
+            e.printStackTrace();
         } catch (IOException e) {
             e.printStackTrace();
         }
 
+
+    }
+
+    public void run(){
         try {
-            ServerSocket ss = new ServerSocket(12345);
+            byte[] receiveData = new byte[1024];
+            DatagramSocket dataSocket = new DatagramSocket(8888);
+            while(true){
+                DatagramPacket dataPacket = new DatagramPacket(receiveData,receiveData.length);
+                dataSocket.receive(dataPacket);
 
-            while (true){
-                Socket socket = ss.accept();
+                receiveData = dataPacket.getData();
 
-                DataInputStream in = new DataInputStream(socket.getInputStream());
-                PrintWriter out = new PrintWriter(socket.getOutputStream());
+                int firstByte = receiveData[0];
+
+                switch (firstByte){
+                    case 0: // inicio de conexão
+                        confirmConnection(dataPacket.getAddress(),dataPacket.getPort());    //envia confirmação de conexão para quem enviou o datapacket de inicio de confirmação
+                        break;
+
+                    case 1: //receber metadados
+
+                        break;
+
+                    case 2: //receção de dados
+                        break;
+                }
 
 
-
-                boolean c = compare(attr,in);
-
-                System.out.println(c);
-
-                out.println(c);
-
-                socket.shutdownOutput();
-                socket.shutdownInput();
-                socket.close();
             }
+        } catch (SocketException e) {
+            e.printStackTrace();
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
+
+
 }
