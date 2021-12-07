@@ -37,9 +37,7 @@ public class Servidor implements Runnable{
             confirmSocket.send(response);
             confirmSocket.close();
 
-        } catch (SocketException e) {
-            e.printStackTrace();
-        } catch (IOException e) {
+        }  catch (IOException e) {
             e.printStackTrace();
         }
 
@@ -73,8 +71,6 @@ public class Servidor implements Runnable{
 
 
             }
-        } catch (SocketException e) {
-            e.printStackTrace();
         } catch (IOException e) {
             e.printStackTrace();
         }
