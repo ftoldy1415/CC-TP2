@@ -223,7 +223,7 @@ public class Cliente implements Runnable{
         long compare_long = 0;
         compare = FileTime.from(compare_long,TimeUnit.SECONDS);
         int i = 0;
-
+        listaMeta = new ArrayList<>();
         while (index < dadosBytes.length) {
             System.out.println("PASSAGEM Nº -> " + i);
             System.out.println("Index: " + index);
@@ -233,24 +233,25 @@ public class Cliente implements Runnable{
             if(dadosBytes[index] == 0 && dadosBytes[index+1] == 0) {
                 index += 2;
                 System.out.println("Acabou o pacote");
-                seq_number = (short) (((dadosBytes[index] & 0xFF) << 8) | (dadosBytes[index+1] & 0xFF));
+                seq_number = (short) (((dadosBytes[index+1] & 0xFF) << 8) | (dadosBytes[index] & 0xFF));
                 System.out.println("Nº seq :" + seq_number);
+                System.out.println(listaMeta);
                 return new AbstractMap.SimpleEntry<>((int) seq_number, listaMeta);
             }
             else{
-                listaMeta = new ArrayList<>();
                 Map.Entry<Integer, Map.Entry<String, FileTime>> ret = deserializeMeta(dadosBytes, index);
                 System.out.println("FILE TIME " + ret.getValue().getValue());
                 file_time = ret.getValue().getValue();
                 if(file_time.compareTo(compare) == 0){
                     System.out.println("Deserialize Pasta");
-                    listaMeta.add(ret.getValue());
+                    listaMeta.add(new AbstractMap.SimpleEntry<>(ret.getValue().getKey(), ret.getValue().getValue()));
                     System.out.println(listaMeta);
                     return new AbstractMap.SimpleEntry<>(0, listaMeta);
                 }
                 else{
                     System.out.println("Deserialize Meta");
-                    listaMeta.add(ret.getValue());
+                    listaMeta.add(new AbstractMap.SimpleEntry<>(ret.getValue().getKey(), ret.getValue().getValue()));
+                    System.out.println(listaMeta);
                 }
                 index = ret.getKey();
                 System.out.println("DEPOIS DA PASSAGEM " + index);
