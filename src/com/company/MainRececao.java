@@ -2,6 +2,7 @@ package com.company;
 
 import java.io.IOException;
 import java.net.DatagramPacket;
+import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.nio.file.attribute.FileTime;
 import java.util.List;
@@ -10,14 +11,21 @@ import java.util.Map;
 public class MainRececao {
 
     public static void main(String[] args) throws IOException {
-        InetAddress ipEnviar = InetAddress.getByName("127.2.1.23");
+
+        InetAddress ipEnviar = InetAddress.getByName("localhost");
         int port = 57200;
 
-        Cliente c = new Cliente(ipEnviar, port);
+        DatagramSocket s = new DatagramSocket(57201);
+        Demultiplexer dm = new Demultiplexer(s);
 
-        try {
-            Metadados m = new Metadados();
+        dm.start();
+
+        Cliente c = new Cliente(ipEnviar, port, dm, s);
+
+        //try {
+            //Metadados m = new Metadados();
             List<DatagramPacket> original = c.recebeMetadados();
+            /*
 
             List<List<Map.Entry<String, FileTime>>> finalD = m.deserializePackets(original);
             int seq = 0;
@@ -35,9 +43,11 @@ public class MainRececao {
 
             }
 
-        } catch (IOException e) {
-            System.out.println("ERRO: " + e.getMessage());
-        }
+             */
+
+      //  } catch (IOException e) {
+      //      System.out.println("ERRO: " + e.getMessage());
+      //  }
     }
 
 }

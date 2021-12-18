@@ -86,7 +86,7 @@ public class Metadados {
      * @param pasta
      * @return
      */
-    private DatagramPacket serializePastaData (String s,String pasta){
+    private DatagramPacket serializePastaData (String s, String pasta, short totalPackets){
 
         byte [] pastaB = pasta.getBytes();             //byte array com o nome da pasta
         byte [] b = new byte[2];                       //cabeçalho para guardar o tamanho do nome da pasta
@@ -106,6 +106,12 @@ public class Metadados {
         buffer.putLong(id);
         byte[] longBuffer = buffer.array();
         System.arraycopy(longBuffer, 0, pastaData, 1+pastaB.length + b.length, longBuffer.length);
+
+        byte [] total = new byte[2];
+        total[0] = (byte) (totalPackets & 0xff);
+        total[1] = (byte) ((totalPackets >> 8) & 0xff);
+
+        System.arraycopy(total, 0, pastaData, 1+pastaB.length+b.length+8, total.length);
 
         return new DatagramPacket(pastaData,mss);
     }
@@ -147,9 +153,8 @@ public class Metadados {
         File f = new File(s);
         int size_final;
         short seq_number = 1;
+        int resultSerializedIndex = 0;
 
-        DatagramPacket pastaPacket = serializePastaData(s,pasta); //serializa o nome da pasta
-        resultSerialized.add(pastaPacket);
 
 
         byte[] packetBuffer = new byte[mss], packetBufferData;
@@ -174,6 +179,9 @@ public class Metadados {
 
             }
         }
+
+        DatagramPacket pastaPacket = serializePastaData(s, pasta, seq_number); //serializa o nome da pasta
+        resultSerialized.add(pastaPacket);
 
         System.out.println("Final de Pacote");
         packetBufferData = fechaPacote(packetBuffer, size_final, seq_number);
@@ -232,6 +240,7 @@ public class Metadados {
                 System.out.println("Nº seq :" + seq_number);
                 System.out.println(listaMeta);
                 this.totalPackets = (short) (((dadosBytes[index+1] & 0xFF) << 8) | (dadosBytes[index] & 0xFF));
+                System.out.println("TOTAL PACOTES: " + this.totalPackets);
                 return new AbstractMap.SimpleEntry<>((int) seq_number, listaMeta);
             }
             else{
@@ -242,6 +251,7 @@ public class Metadados {
                     System.out.println("Deserialize Pasta");
                     listaMeta.add(new AbstractMap.SimpleEntry<>(ret.getValue().getKey(), ret.getValue().getValue()));
                     System.out.println(listaMeta);
+                    this.totalPackets = (short) (((dadosBytes[index+1] & 0xFF) << 8) | (dadosBytes[index] & 0xFF));
                     return new AbstractMap.SimpleEntry<>(0, listaMeta);
                 }
                 else{

@@ -23,16 +23,23 @@ public class Main {
 
 
     public static void main(String[] args) throws IOException {
-        InetAddress ipEnviar = InetAddress.getByName("127.2.1.23");
-        int port = 57200;
 
-        Cliente c = new Cliente(ipEnviar, port);
+        InetAddress ipEnviar = InetAddress.getByName("localhost");
+        int port = 57201;
+
+        DatagramSocket s = new DatagramSocket(57200);
+        Demultiplexer dm = new Demultiplexer(s);
+
+        dm.start();
+
+        Cliente c = new Cliente(ipEnviar, port, dm, s);
 
 
         Metadados m = new Metadados();
-        List<DatagramPacket> original = m.serializeFileMeta("/Users/brunofilipemirandapereira/Downloads/", "Downloads");
+        List<DatagramPacket> original = m.serializeFileMeta("/Users/brunofilipemirandapereira/Documents/Universidade/3_ANO/1_Semestre/SD/SD_PL/src/Guiao8/", "Guiao8");
         System.out.println("O TAMANHO DESTA MERDA É :" + original.size());
 
+        System.out.println("INICIO DO ENVIO");
 
         c.enviaMetadados(original);
 

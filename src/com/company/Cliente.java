@@ -22,11 +22,11 @@ public class Cliente implements Runnable{
     private DatagramSocket s;
     private Metadados m;
 
-    public Cliente(InetAddress ip, int port) throws SocketException {
+    public Cliente(InetAddress ip, int port, Demultiplexer dm, DatagramSocket s) throws SocketException {
         this.ipEnviar = ip;
         this.port     = port;
-        this.s        = new DatagramSocket(port,ip);
-        this.dm       = new Demultiplexer(this.s);
+        this.dm       = dm;
+        this.s        = s;
         this.m        = new Metadados();
     }
 
@@ -68,7 +68,7 @@ public class Cliente implements Runnable{
 
         while(!response){                                          //verifica se já foi recebida a resposta de confirmação
             try{
-                this.s.setSoTimeout(100);                          //set do timeout da resposta
+                this.s.setSoTimeout(1000);                          //set do timeout da resposta
                 receivePacket = this.dm.receive(1);             //bloqueia até receber uma resposta
                 response = true;//
 
@@ -112,7 +112,7 @@ public class Cliente implements Runnable{
         byte[] missingPacketsData = new byte[1024];
         missingPacketsData[0] = 1; //tag : metadados
         DatagramPacket missingPackets;
-        short missingIndex = 0;
+        short missingIndex = 1, missing_seq = 0;
 
         try {
 
@@ -132,19 +132,19 @@ public class Cliente implements Runnable{
 
             numSeqReceived.add(received, true);             //coloca como recebido o indice do 1º pacote lido
             totalRecebidos++;                                     //incrementar o total de pacotes recebidos
-
-            while(totalRecebidos < total ){
-                this.s.setSoTimeout(100);
+            System.out.println("NUMERO TOTAL DE PACOTES: " + total);
+            while(totalRecebidos < total){
+                this.s.setSoTimeout(10000);
                 dp = this.dm.receive(1);                       //receber um pacote
                 data = dp.getData();
                 short controlo = (short)(((data[3] & 0xFF) << 8) | (data[2] & 0xFF));
                 if(controlo == -1){                               //no caso de receber o pacote de controlo envia os numeros de sequencia dos pacotes que nao foram recebidos
                     for(boolean b : numSeqReceived){
                         if(!b){
-                            missingPacketsData[missingIndex] = (byte) (missingIndex & 0xff);
-                            missingPacketsData[missingIndex] = (byte) ((missingIndex >> 8) & 0xff);
+                            missingPacketsData[missingIndex++] = (byte) (missing_seq & 0xff);
+                            missingPacketsData[missingIndex++] = (byte) ((missing_seq >> 8) & 0xff);
                         }
-                        missingIndex++;
+                        missing_seq++;
                     }
                     missingPackets = new DatagramPacket(missingPacketsData, missingPacketsData.length);
                     this.dm.send(missingPackets);
@@ -161,13 +161,24 @@ public class Cliente implements Runnable{
 
             }
 
+            System.out.println("CHEGOU AO ENVIO FINAL");
+            System.out.println("Tamanho Meta List" + metaList.size());
+
             short finalConfirmation = -1;
             byte[] confirmation = new byte[1024];
             confirmation[0] = 1;
             confirmation[1] = (byte) (finalConfirmation & 0xff);
             confirmation[2] = (byte) ((finalConfirmation >> 8) & 0xff);
             DatagramPacket confirmationPacket = new DatagramPacket(confirmation, confirmation.length);
+            confirmationPacket.setAddress(this.ipEnviar);
+            System.out.println("Enviei para o IP: " + this.ipEnviar);
+            confirmationPacket.setPort(this.port);
+            System.out.println("Enviei para a porta: " + this.port);
             this.dm.send(confirmationPacket);
+
+            for(Map.Entry<String, FileTime> entry : metaList){
+                System.out.println(entry.getKey());
+            }
 
         } catch (IOException | InterruptedException ex) {
             ex.printStackTrace();
