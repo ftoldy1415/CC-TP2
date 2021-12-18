@@ -22,7 +22,7 @@ public class Cliente implements Runnable{
     private DatagramSocket s;
     private Metadados m;
 
-    public Cliente(InetAddress ip, int port, Demultiplexer dm) throws SocketException {
+    public Cliente(InetAddress ip, int port) throws SocketException {
         this.ipEnviar = ip;
         this.port     = port;
         this.s        = new DatagramSocket(port,ip);
@@ -70,7 +70,6 @@ public class Cliente implements Runnable{
             try{
                 this.s.setSoTimeout(100);                          //set do timeout da resposta
                 receivePacket = this.dm.receive(1);             //bloqueia até receber uma resposta
-                //falta verificar se é o pacote de confirmação
                 response = true;//
 
             }catch(IOException | InterruptedException e){
@@ -161,7 +160,7 @@ public class Cliente implements Runnable{
                 }
 
             }
-            
+
             short finalConfirmation = -1;
             byte[] confirmation = new byte[1024];
             confirmation[0] = 1;

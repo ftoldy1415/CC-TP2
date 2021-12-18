@@ -1,12 +1,10 @@
 package com.company;
 
+import javax.xml.crypto.Data;
 import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Array;
-import java.net.DatagramPacket;
-import java.net.InetAddress;
-import java.net.SocketException;
-import java.net.UnknownHostException;
+import java.net.*;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -24,11 +22,22 @@ import static java.nio.file.attribute.FileTime.from;
 public class Main {
 
 
-
     public static void main(String[] args) throws IOException {
+        InetAddress ipEnviar = InetAddress.getByName("127.2.1.23");
+        int port = 57200;
+
+        Cliente c = new Cliente(ipEnviar, port);
 
 
+        Metadados m = new Metadados();
+        List<DatagramPacket> original = m.serializeFileMeta("/Users/brunofilipemirandapereira/Downloads/", "Downloads");
+        System.out.println("O TAMANHO DESTA MERDA É :" + original.size());
 
+
+        c.enviaMetadados(original);
+
+    }
+}
 
         /*
         try{
@@ -50,12 +59,6 @@ public class Main {
                 seq++;
 
             }
-
-            List<String> result = c.compare("prolog",finalD);
-            for (String s : result){
-                System.out.println("Ficheiro Desatualizado : " + s);
-            }
-
 
         }catch (IOException e){
             System.out.println("ERRO: " + e.getMessage());
@@ -108,5 +111,3 @@ public class Main {
 
 
 
-    }
-}
