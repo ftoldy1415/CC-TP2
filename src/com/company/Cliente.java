@@ -13,62 +13,169 @@ import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 
+
+
 public class Cliente implements Runnable{
     private InetAddress ipEnviar;
     private int port;
-    private int mss;
-    private int metaSize;
+    private Demultiplexer dm;
+    private DatagramSocket s;
+    private Metadados m;
 
-    DatagramSocket s;
-
-    public Cliente(InetAddress ip, int port) throws SocketException {
+    public Cliente(InetAddress ip, int port, Demultiplexer dm) throws SocketException {
         this.ipEnviar = ip;
         this.port     = port;
-        this.s = new DatagramSocket(port,ip);
-        this.mss = 1024;
-        this.metaSize = this.mss - 6;
+        this.s        = new DatagramSocket(port,ip);
+        this.dm       = new Demultiplexer(this.s);
+        this.m        = new Metadados();
     }
 
-    public static void serialize(DataOutputStream out, BasicFileAttributes attr) throws IOException {
-        out.writeUTF(String.valueOf(attr.creationTime()));
-        out.writeUTF(attr.lastModifiedTime().toString());
-        out.writeInt(Integer.parseInt(String.valueOf(attr.size())));
+    public void comunInicial(){
+        byte[] buffer = new byte[1024];
+        buffer[0] = 0;
+        DatagramPacket pi = new DatagramPacket(buffer, buffer.length);
+        this.dm.send(pi);
+        try {
+            this.s.setSoTimeout(100);
+            DatagramPacket res = this.dm.receive(0);
+            //enviaMetadados
+
+            //criação thread (tag 1, envio de metadados)
+        } catch (IOException e) {
+            e.printStackTrace();
+        }catch(InterruptedException e){
+            //o seu peer nao estava à escuta portanto este fica à espera de uma pedra -> que significa que está pronto
+            //ao receber a pedra responde tambem com um pedra , fica assim estabelecida a primeira comunicação que indica que ambos estao prontos
+            //em seguida o peer vai enviar os metadados do ficheiro que serão recebidos
+            //escuta();
+
+            //criação thread (tag 1, receção de metadados)
+        }
     }
 
-    public DatagramPacket enviaInicioCon() throws IOException{
-        byte[] b = new byte[1];
-        b[0] = 0;
-        DatagramPacket dp = new DatagramPacket(b,1);
-        DatagramPacket rp = new DatagramPacket(b,1);
-        this.s.send(dp);
-        this.s.setSoTimeout(150);
-        this.s.receive(rp);
-        return rp;
+    public void enviaMetadados(List<DatagramPacket> l){
+
+        for(DatagramPacket p : l){
+            p.setAddress(this.ipEnviar);                           //set do ip do peer
+            p.setPort(this.port);                                  //set da porta do socket
+            this.dm.send(p);
+        }
+        boolean response = false;                                  //flag da resposta de confirmação
+        DatagramPacket receivePacket;
+        byte[] missingPacketsData;
+        short seqNum;
+        int index = 1;
+
+        while(!response){                                          //verifica se já foi recebida a resposta de confirmação
+            try{
+                this.s.setSoTimeout(100);                          //set do timeout da resposta
+                receivePacket = this.dm.receive(1);             //bloqueia até receber uma resposta
+                //falta verificar se é o pacote de confirmação
+                response = true;//
+
+            }catch(IOException | InterruptedException e){
+                byte[] controlBuffer = new byte[1024];              //buffer para pacote de controlo
+                short control = -1;                                 //flag de controlo
+                controlBuffer[0] = 1;                               //tag do pacote
+                controlBuffer[1] = (byte) (control & 0xff);         //inicializar o primeiro byte da flag de controlo
+                controlBuffer[2] = (byte) ((control >> 8) & 0xff);  //inicializar o segundo byte da flag de controlo
+                DatagramPacket controlPacket = new DatagramPacket(controlBuffer, controlBuffer.length); //pacote a enviar
+                controlPacket.setAddress(this.ipEnviar);            //set do endereço ip para onde vai ser enviado o pacote
+                controlPacket.setPort(this.port);                   //set da porta para onde sera reencaminhado o pacote no destino
+                this.dm.send(controlPacket);                        //enviar o pacote
+                try {
+                    receivePacket = this.dm.receive(1);          //receber pacote
+                    missingPacketsData = receivePacket.getData();   //extrair os dados do pacote
+                    while((seqNum = (short) (((missingPacketsData[index+1] & 0xFF) << 8) | (missingPacketsData[index] & 0xFF))) != -1){
+                        //reenviar os pacotes que nao chegaram ao destino
+                        DatagramPacket packet = l.get(seqNum);
+                        packet.setAddress(this.ipEnviar);
+                        packet.setPort(this.port);
+                        this.dm.send(packet);
+                        index += 2;
+                    }
+                } catch (IOException | InterruptedException exception) {
+                    exception.printStackTrace();
+                }
+            }
+        }
     }
 
-    public void recebeMeta(){
-        byte [] size = new byte[4];
-        DatagramPacket rp = new DatagramPacket(size,4);
-        int num = ByteBuffer.wrap(size).getInt();
-        byte [] metadados = new byte[num];
-        DatagramPacket metadadosPacket = new DatagramPacket(metadados, num);
-        Map<String,String> mapMetadados = parser(metadados);
-    }
 
 
+    public List<DatagramPacket> recebeMetadados(){
+        List<Map.Entry<String, FileTime>> metaList = new ArrayList<>();
 
-    public Map<String,String> parser(byte[] b){
-        HashMap<String,String> resultado = new HashMap<>();
-        int index = 0;
-        int name_size;
-        while (index < b.length){
-            name_size = b[index++];
-            String Name = new String(Arrays.copyOfRange(b, index, name_size));
-            index+=name_size;
-            String lastAccess = "aaa";
+        int total, totalRecebidos = 0, received;
+        DatagramPacket dp;
+        Map.Entry<Integer, List<Map.Entry<String, FileTime>>> e;
+        byte[] data;//
+        byte[] missingPacketsData = new byte[1024];
+        missingPacketsData[0] = 1; //tag : metadados
+        DatagramPacket missingPackets;
+        short missingIndex = 0;
+
+        try {
+
+            dp = this.dm.receive(1);                            //receber o primeiro pacote
+            e = this.m.deserializeFileMeta(dp);                    //desserializar o primeiro pacote
+            received = e.getKey();                                 //retirar o numero de sequencia
+            total = this.m.getTotalPackets();                      //retirar o numero total de pacotes
+            for(Map.Entry<String, FileTime> entry : e.getValue()){
+                metaList.add(entry);                               //adicionar o par constituido <Nome,Data da Ultima Alteração>
+            }
+
+            List<Boolean> numSeqReceived = new ArrayList<>(total); //lista para apontar os pacotes que chegam
+
+            for(int i = 0; i < total; i++){
+                numSeqReceived.add(i, false);               //inicializar a lista
+            }
+
+            numSeqReceived.add(received, true);             //coloca como recebido o indice do 1º pacote lido
+            totalRecebidos++;                                     //incrementar o total de pacotes recebidos
+
+            while(totalRecebidos < total ){
+                this.s.setSoTimeout(100);
+                dp = this.dm.receive(1);                       //receber um pacote
+                data = dp.getData();
+                short controlo = (short)(((data[3] & 0xFF) << 8) | (data[2] & 0xFF));
+                if(controlo == -1){                               //no caso de receber o pacote de controlo envia os numeros de sequencia dos pacotes que nao foram recebidos
+                    for(boolean b : numSeqReceived){
+                        if(!b){
+                            missingPacketsData[missingIndex] = (byte) (missingIndex & 0xff);
+                            missingPacketsData[missingIndex] = (byte) ((missingIndex >> 8) & 0xff);
+                        }
+                        missingIndex++;
+                    }
+                    missingPackets = new DatagramPacket(missingPacketsData, missingPacketsData.length);
+                    this.dm.send(missingPackets);
+                }
+                else{                                              //no caso de nao ser um pacote de controlo vai desserializar e retirar os metadados do pacote
+                    e = this.m.deserializeFileMeta(dp);
+                    received = e.getKey();
+                    for(Map.Entry<String, FileTime> entry : e.getValue()){
+                        metaList.add(entry);
+                    }
+                    numSeqReceived.add(received, true);     //anota o numero de sequencia do pacote como tendo sido recebido
+                    totalRecebidos++;                             //aumenta o numero de pacotes recebidos
+                }
+
+            }
+            
+            short finalConfirmation = -1;
+            byte[] confirmation = new byte[1024];
+            confirmation[0] = 1;
+            confirmation[1] = (byte) (finalConfirmation & 0xff);
+            confirmation[2] = (byte) ((finalConfirmation >> 8) & 0xff);
+            DatagramPacket confirmationPacket = new DatagramPacket(confirmation, confirmation.length);
+            this.dm.send(confirmationPacket);
+
+        } catch (IOException | InterruptedException ex) {
+            ex.printStackTrace();
         }
         return null;
     }
+
 
     public void escuta(String directory, String pasta) throws IOException {
         byte[] b = new byte[1];
@@ -77,222 +184,14 @@ public class Cliente implements Runnable{
         //this.s.setSoTimeout(60000);
         this.s.receive(rp);
         //byte[] toSend = serializeFileMeta(directory,pasta);
-        //byte[] finalSend = new byte[1+toSend.length];
+        //byte[] finalSend = ve(rp);new byte[1+toSend.length];
         //finalSend[0] = 1;
         //System.arraycopy(toSend, 0, finalSend, 1, toSend.length);
         //DatagramPacket metaDados = new DatagramPacket(finalSend,finalSend.length);
     }
 
-    public byte[] serializeMeta(BasicFileAttributes attr,String name){
-        short name_size = (short) name.length();
-        long lastmodified = attr.lastModifiedTime().to(TimeUnit.SECONDS);
-        byte [] nome = name.getBytes();
-        byte[] b = new byte[name_size+10];
-        System.arraycopy(nome,0,b,2,nome.length);
-        b[0] = (byte) (name_size & 0xff);
-        b[1] = (byte) ((name_size >> 8) & 0xff);
-        ByteBuffer buffer = ByteBuffer.allocate(Long.BYTES);
-        buffer.putLong(lastmodified);
-        byte[] longBuffer = buffer.array();
-        System.arraycopy(longBuffer,0,b,nome.length+2,8);
-        return b;
-    }
-
-    public Map.Entry<Integer, Map.Entry<String, FileTime>> deserializeMeta(byte[] b, int index){
-
-        short name_size = (short)(((b[index+1] & 0xFF) << 8) | (b[index] & 0xFF));
-        System.out.println(b[index+1]);
-        System.out.println(b[index]);
-        byte[] nomeFile = new byte[name_size];
-        System.out.println(name_size);
-        System.arraycopy(b,index+2,nomeFile,0,name_size);
-        String name = new String(nomeFile);
-        ByteBuffer buffer = ByteBuffer.allocate(Long.BYTES);
-        byte[] bufferBytes = new byte[8];
-        System.arraycopy(b,index + 2 + name_size ,bufferBytes,0,8);
-        buffer.put(bufferBytes);
-        buffer.flip(); //need flip
-        long lastModifiedLong = buffer.getLong();
-        FileTime lastModifiedTime = FileTime.from(lastModifiedLong,TimeUnit.SECONDS);
-        index += 2 + name_size + 8;
-
-        return new AbstractMap.SimpleEntry<>(index, new AbstractMap.SimpleEntry<>(name, lastModifiedTime));
-
-    }
-
-    public List<DatagramPacket> serializeFileMeta(String s, String pasta) throws IOException {
-        ArrayList<DatagramPacket> resultSerialized = new ArrayList<>();
-        ArrayList<Map.Entry<Integer,byte[]>> provisional = new ArrayList<>();
-
-        File f = new File(s); //
-        int size_final = 0;
-        short seq_number = 1;
-        byte [] pastaB = pasta.getBytes();
-        byte [] b = new byte[2];
-        short size_name_pasta = (short) pastaB.length;
-        b[0] = (byte) (size_name_pasta & 0xff);
-        b[1] = (byte) ((size_name_pasta >> 8) & 0xff);
-
-        byte[] pastaData = new byte[mss];
-
-        System.arraycopy(b, 0, pastaData, 0, b.length);
-        System.arraycopy(pastaB, 0, pastaData, 2, pastaB.length);
 
 
-        long id = 0;
-        ByteBuffer buffer = ByteBuffer.allocate(Long.BYTES);
-        buffer.putLong(id);
-        byte[] longBuffer = buffer.array();
-        System.arraycopy(longBuffer, 0, pastaData, pastaB.length + b.length, longBuffer.length);
-
-        DatagramPacket pastaPacket = new DatagramPacket(pastaData,mss);
-        resultSerialized.add(pastaPacket);
-
-        byte[] packetBuffer = new byte[mss];
-        byte[] packetBufferData;
-
-        for(String x : Objects.requireNonNull(f.list())){
-            BasicFileAttributes attr = Files.readAttributes(Path.of(s +x), BasicFileAttributes.class);
-            byte[] serializado = serializeMeta(attr,x);
-
-            if (serializado.length < metaSize-size_final){
-                System.arraycopy(serializado, 0, packetBuffer, size_final, serializado.length);
-
-                System.out.println("FICHEIRO : " + x + " Serialized size " + serializado.length);
-                size_final += serializado.length;
-            }
-            else {                                  //flag final de pacote
-                System.out.println("Final de Pacote");
-                packetBuffer[size_final++] = 0;
-                packetBuffer[size_final++] = 0;
-                packetBuffer[size_final++] = (byte) (seq_number & 0xff);
-                packetBuffer[size_final++] = (byte) ((seq_number >> 8) & 0xff);
-                seq_number++;
-                packetBufferData = packetBuffer.clone();
-                provisional.add(new AbstractMap.SimpleEntry<>(size_final, packetBufferData));
-                size_final = 0; // quando pacote fecha, temos que voltar ao inicio do proximo pacote.
-            }
-        }
-
-        System.out.println("Final de Pacote");
-        packetBuffer[size_final++] = 0;
-        packetBuffer[size_final++] = 0;
-        packetBuffer[size_final++] = (byte) (seq_number & 0xff);
-        packetBuffer[size_final++] = (byte) ((seq_number >> 8) & 0xff);
-        seq_number++;
-        packetBufferData = packetBuffer.clone();
-        provisional.add(new AbstractMap.SimpleEntry<>(size_final, packetBufferData));
-
-        for (Map.Entry<Integer, byte[]> e : provisional){ //cria os datagramPackets com o tamanho o nº de sequencia nos 2 bytes depois da informaçao a passar
-            byte [] toAdd = e.getValue();
-            int indexA = e.getKey();
-            toAdd[indexA++] = (byte) (seq_number & 0xff);
-            toAdd[indexA] = (byte) ((seq_number >> 8) & 0xff);
-            DatagramPacket packetToAdd = new DatagramPacket(toAdd, toAdd.length);
-            resultSerialized.add(packetToAdd);
-        }
-        System.out.println("Nº de pacotes" + resultSerialized.size());
-        return resultSerialized;
-    }
-
-    /**
-     * Deserializa um DatagramPacket relativo a metadados
-     * @param dados
-     * @return um map entry que contem o nº de sequencia e a lista de metadados contidos no datagramPacket deserializado
-     */
-    public Map.Entry<Integer, List<Map.Entry<String, FileTime>>> deserializeFileMeta(DatagramPacket dados) {
-
-        //Map<String, FileTime> finalMap = new HashMap<>();
-        byte dadosBytes[] = dados.getData();
-
-        /*
-        short folder_size = (short) (((dadosBytes[0] & 0xFF) << 8) | (dadosBytes[1] & 0xFF));
-        byte[] nomePasta = new byte[folder_size];
-        System.arraycopy(dadosBytes, 2, nomePasta, 0, folder_size);
-        String name = new String(nomePasta);
-        finalMap.put(name, null);
-
-
-         */
-
-        short seq_number, total;
-        List<Map.Entry<String, FileTime>> listaMeta = null;
-        int index = 0;
-
-        FileTime file_time, compare; //compare é criado para fazer a verificação do long que representa FileTime. Usado para a verificação do primeiro elemento (pasta ou ficheiro)
-        long compare_long = 0;
-        compare = FileTime.from(compare_long,TimeUnit.SECONDS);
-        int i = 0;
-        listaMeta = new ArrayList<>();
-        while (index < dadosBytes.length) {
-            System.out.println("PASSAGEM Nº -> " + i);
-            System.out.println("Index: " + index);
-            System.out.println("Dados Bytes" + dadosBytes.length);
-            i++;
-            System.out.println("Primeiro byte: " + dadosBytes[index] + " | Segundo Byte: " + dadosBytes[index+1]);
-            if(dadosBytes[index] == 0 && dadosBytes[index+1] == 0) {
-                index += 2;
-                System.out.println("Acabou o pacote");
-                seq_number = (short) (((dadosBytes[index+1] & 0xFF) << 8) | (dadosBytes[index] & 0xFF));
-                System.out.println("Nº seq :" + seq_number);
-                System.out.println(listaMeta);
-                return new AbstractMap.SimpleEntry<>((int) seq_number, listaMeta);
-            }
-            else{
-                Map.Entry<Integer, Map.Entry<String, FileTime>> ret = deserializeMeta(dadosBytes, index);
-                System.out.println("FILE TIME " + ret.getValue().getValue());
-                file_time = ret.getValue().getValue();
-                if(file_time.compareTo(compare) == 0){
-                    System.out.println("Deserialize Pasta");
-                    listaMeta.add(new AbstractMap.SimpleEntry<>(ret.getValue().getKey(), ret.getValue().getValue()));
-                    System.out.println(listaMeta);
-                    return new AbstractMap.SimpleEntry<>(0, listaMeta);
-                }
-                else{
-                    System.out.println("Deserialize Meta");
-                    listaMeta.add(new AbstractMap.SimpleEntry<>(ret.getValue().getKey(), ret.getValue().getValue()));
-                    System.out.println(listaMeta);
-                }
-                index = ret.getKey();
-                System.out.println("DEPOIS DA PASSAGEM " + index);
-            }
-        }
-        return null;
-    }
-
-    public List<List<Map.Entry<String, FileTime>>> deserializePackets(List<DatagramPacket> lp){
-        List<List<Map.Entry<String, FileTime>>> listaFinal = new ArrayList<>();
-        Map.Entry<Integer, List<Map.Entry<String, FileTime>>> entry;
-        int i = 0;
-        for (DatagramPacket dp : lp){
-            entry = deserializeFileMeta(lp.get(i++));
-            listaFinal.add(entry.getKey(), entry.getValue());
-            if (entry.getValue() == null) System.out.println("vai dar merda vaaaaaaaaiiiii");
-        }
-        return listaFinal;
-    }
-
-    public List<String> compare(String s , Map<String, FileTime> map) throws IOException {
-        String currentPath = new java.io.File(".").getCanonicalPath();
-        String filepath = currentPath + "/" + s + "/";
-        System.out.println(filepath);
-        ArrayList<String> files = new ArrayList<>();
-        for (Map.Entry<String,FileTime> e : map.entrySet()){
-            try {
-                File f = new File(filepath+e.getKey());
-                if (e.getValue() == null);
-                else{
-                    BasicFileAttributes attr = Files.readAttributes(Path.of(filepath + e.getKey()), BasicFileAttributes.class);
-                    if (attr.lastModifiedTime().compareTo(e.getValue()) < 0){
-                        files.add(e.getKey());
-                    }
-                }
-            } catch(IOException exception){
-                files.add(e.getKey());
-            }
-        }
-        return files;
-    }
 
     public List <byte[]> fileToByte(File file) throws IOException {
         FileInputStream fl = new FileInputStream(file);
@@ -349,6 +248,6 @@ public class Cliente implements Runnable{
 
 
     public void run() {
-
     }
+
 }
