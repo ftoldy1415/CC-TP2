@@ -33,7 +33,7 @@ public class Metadados {
      * @param name nome do ficheiro
      * @return
      */
-    public byte[] serializeMeta(BasicFileAttributes attr,String name){
+    public byte[] serializeMetadadosFicheiro(BasicFileAttributes attr,String name){
         long lastmodified = attr.lastModifiedTime().to(TimeUnit.SECONDS);
         byte [] nome = name.getBytes();
         short name_size = (short) nome.length;
@@ -56,7 +56,7 @@ public class Metadados {
      * @param index posição em que é iniciada a leitura
      * @return Map entry com o tamanho total dos metadados como key e um map entry com o nome e filetime como valor.
      */
-    public Map.Entry<Integer, Map.Entry<String, FileTime>> deserializeMeta(byte[] b, int index){
+    public Map.Entry<Integer, Map.Entry<String, FileTime>> deserializeMetadadosFicheiro(byte[] b, int index){
 
         short name_size = (short)(((b[index+1] & 0xFF) << 8) | (b[index] & 0xFF));
         System.out.println(b[index+1]);
@@ -146,7 +146,7 @@ public class Metadados {
     }
 
 
-    public List<DatagramPacket> serializeFileMeta(String s, String pasta) throws IOException {
+    public List<DatagramPacket> serializeDataToPacket(String s, String pasta) throws IOException {
         ArrayList<DatagramPacket> resultSerialized = new ArrayList<>();
         ArrayList<Map.Entry<Integer,byte[]>> provisional = new ArrayList<>();
 
@@ -162,7 +162,7 @@ public class Metadados {
         size_final = 1;
         for(String x : Objects.requireNonNull(f.list())){
             BasicFileAttributes attr = Files.readAttributes(Path.of(s +x), BasicFileAttributes.class);
-            byte[] serializado = serializeMeta(attr,x);
+            byte[] serializado = serializeMetadadosFicheiro(attr,x);
 
             if (serializado.length < metaSize-size_final){
                 System.arraycopy(serializado, 0, packetBuffer, size_final, serializado.length);
@@ -180,7 +180,7 @@ public class Metadados {
             }
         }
 
-        DatagramPacket pastaPacket = serializePastaData(s, pasta, seq_number); //serializa o nome da pasta
+        DatagramPacket pastaPacket = serializePastaData(s, pasta, (short) (seq_number+1)); //serializa o nome da pasta
         resultSerialized.add(pastaPacket);
 
         System.out.println("Final de Pacote");
@@ -188,7 +188,7 @@ public class Metadados {
         provisional.add(new AbstractMap.SimpleEntry<>(size_final+4, packetBufferData));
 
         for (Map.Entry<Integer, byte[]> e : provisional){              //cria os datagramPackets com o tamanho o nº de sequencia nos 2 bytes depois da informaçao a passar
-            DatagramPacket packetToAdd = criaPacote(e, seq_number);    //seq number vai ser o neste momento o número total de pacotes a enviar. Este nº vai ser colocado em todos os pacotes
+            DatagramPacket packetToAdd = criaPacote(e, seq_number+1);    //seq number vai ser o neste momento o número total de pacotes a enviar. Este nº vai ser colocado em todos os pacotes
             resultSerialized.add(packetToAdd);
         }
         System.out.println("Nº de pacotes" + resultSerialized.size());
@@ -244,14 +244,14 @@ public class Metadados {
                 return new AbstractMap.SimpleEntry<>((int) seq_number, listaMeta);
             }
             else{
-                Map.Entry<Integer, Map.Entry<String, FileTime>> ret = deserializeMeta(dadosBytes, index);
+                Map.Entry<Integer, Map.Entry<String, FileTime>> ret = deserializeMetadadosFicheiro(dadosBytes, index);
                 System.out.println("FILE TIME " + ret.getValue().getValue());
                 file_time = ret.getValue().getValue();
                 if(file_time.compareTo(compare) == 0){
                     System.out.println("Deserialize Pasta");
                     listaMeta.add(new AbstractMap.SimpleEntry<>(ret.getValue().getKey(), ret.getValue().getValue()));
                     System.out.println(listaMeta);
-                    this.totalPackets = (short) (((dadosBytes[index+1] & 0xFF) << 8) | (dadosBytes[index] & 0xFF));
+                    this.totalPackets = (short) (((dadosBytes[ret.getKey()+1] & 0xFF) << 8) | (dadosBytes[ret.getKey()] & 0xFF));
                     return new AbstractMap.SimpleEntry<>(0, listaMeta);
                 }
                 else{
@@ -265,6 +265,17 @@ public class Metadados {
         }
         return null;
     }
+
+
+
+
+
+
+
+
+
+
+
 
 
     public List<List<Map.Entry<String, FileTime>>> deserializePackets(List<DatagramPacket> lp){

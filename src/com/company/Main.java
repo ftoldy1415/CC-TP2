@@ -32,16 +32,14 @@ public class Main {
 
         dm.start();
 
-        Cliente c = new Cliente(ipEnviar, port, dm, s);
+        Cliente c = new Cliente(ipEnviar, port, dm, s, args[0]);
 
 
         Metadados m = new Metadados();
-        List<DatagramPacket> original = m.serializeFileMeta("/Users/brunofilipemirandapereira/Documents/Universidade/3_ANO/1_Semestre/SD/SD_PL/src/Guiao8/", "Guiao8");
-        System.out.println("O TAMANHO DESTA MERDA É :" + original.size());
+        //List<DatagramPacket> original = m.serializeDataToPacket("/Users/brunofilipemirandapereira/Documents/Universidade/3_ANO/1_Semestre/SD/SD_PL/src/Guiao8/", "Guiao8");
+        //System.out.println("O TAMANHO DESTA MERDA É :" + original.size());
 
-        System.out.println("INICIO DO ENVIO");
-
-        c.enviaMetadados(original);
+        c.comunInicial(new ArrayList<>(), "Guiao8");
 
     }
 }

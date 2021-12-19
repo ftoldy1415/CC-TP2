@@ -21,29 +21,59 @@ public class Cliente implements Runnable{
     private Demultiplexer dm;
     private DatagramSocket s;
     private Metadados m;
+    private String folderName;
 
-    public Cliente(InetAddress ip, int port, Demultiplexer dm, DatagramSocket s) throws SocketException {
-        this.ipEnviar = ip;
-        this.port     = port;
-        this.dm       = dm;
-        this.s        = s;
-        this.m        = new Metadados();
+    public Cliente(InetAddress ip, int port, Demultiplexer dm, DatagramSocket s, String folderName) throws SocketException {
+        this.ipEnviar   = ip;
+        this.port       = port;
+        this.dm         = dm;
+        this.s          = s;
+        this.m          = new Metadados();
+        this.folderName = folderName;
     }
 
-    public void comunInicial(){
+    public void comunInicial(List<DatagramPacket> l, String pasta){
         byte[] buffer = new byte[1024];
         buffer[0] = 0;
         DatagramPacket pi = new DatagramPacket(buffer, buffer.length);
-        this.dm.send(pi);
+        pi.setAddress(this.ipEnviar);
+        pi.setPort(this.port);
         try {
+            this.s.send(pi);
+            System.out.println("Mandei a pedra");
             this.s.setSoTimeout(100);
-            DatagramPacket res = this.dm.receive(0);
+            byte[] dataReceived = new byte[1024];
+            DatagramPacket res = new DatagramPacket(dataReceived, dataReceived.length);
+            this.s.receive(res);
+            System.out.println("Recebi a pedra, tamos em comunicação");
             //enviaMetadados
-
+            //Thread envio = new Thread(() -> enviaMetadados(l));
+            //esperar pelo resultado da comparação
+            //send compared files
             //criação thread (tag 1, envio de metadados)
         } catch (IOException e) {
-            e.printStackTrace();
-        }catch(InterruptedException e){
+            System.out.println("Não recebi a pedra de volta");
+            try {
+                byte[] pedra = new byte[1024];
+                pedra[0] = 0;
+                this.s.setSoTimeout(0);
+                System.out.println("Tou a espera de uma pedra");
+                byte[] dataReceived = new byte[1024];
+                DatagramPacket res = new DatagramPacket(dataReceived, dataReceived.length);
+                this.s.receive(res);
+                System.out.println("Recebi uma pedra, vou mandar uma pedra de volta");
+                DatagramPacket packetPedra = new DatagramPacket(pedra, pedra.length);
+                packetPedra.setAddress(this.ipEnviar);
+                packetPedra.setPort(this.port);
+                this.s.send(packetPedra);
+                //List<DatagramPacket> meta = recebeMetadados();
+                //compare
+                //send compare result
+                //receive files
+            } catch (IOException ioException) {
+                ioException.printStackTrace();
+            }
+
             //o seu peer nao estava à escuta portanto este fica à espera de uma pedra -> que significa que está pronto
             //ao receber a pedra responde tambem com um pedra , fica assim estabelecida a primeira comunicação que indica que ambos estao prontos
             //em seguida o peer vai enviar os metadados do ficheiro que serão recebidos
@@ -68,10 +98,10 @@ public class Cliente implements Runnable{
 
         while(!response){                                          //verifica se já foi recebida a resposta de confirmação
             try{
-                this.s.setSoTimeout(1000);                          //set do timeout da resposta
-                receivePacket = this.dm.receive(1);             //bloqueia até receber uma resposta
+                this.s.setSoTimeout(5000);                          //set do timeout da resposta
+                receivePacket = this.dm.receive(1);//bloqueia até receber uma resposta
+                System.out.println("Recebi o pacote de confirmação");
                 response = true;//
-
             }catch(IOException | InterruptedException e){
                 byte[] controlBuffer = new byte[1024];              //buffer para pacote de controlo
                 short control = -1;                                 //flag de controlo
@@ -97,6 +127,7 @@ public class Cliente implements Runnable{
                     exception.printStackTrace();
                 }
             }
+            System.out.println("O VALOR DE RESPONSE É : " + response);
         }
     }
 
@@ -116,7 +147,7 @@ public class Cliente implements Runnable{
 
         try {
 
-            dp = this.dm.receive(1);                            //receber o primeiro pacote
+            dp = this.dm.receive(1);                           //receber o primeiro pacote
             e = this.m.deserializeFileMeta(dp);                    //desserializar o primeiro pacote
             received = e.getKey();                                 //retirar o numero de sequencia
             total = this.m.getTotalPackets();                      //retirar o numero total de pacotes

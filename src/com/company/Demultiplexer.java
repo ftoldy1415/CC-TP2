@@ -28,10 +28,13 @@ public class Demultiplexer implements AutoCloseable{
         Thread[] threads = {
 
                 new Thread(() -> {
-                   try{
-                       byte[] packetData = new byte[1024];
+                   byte[] packetData;
+
+                   while(true){
+                       packetData = new byte[1024];
                        DatagramPacket packet = new DatagramPacket(packetData, packetData.length);
-                       while(true){
+
+                       try{
                            s.receive(packet);
                            this.l.lock();
                            int tag;
@@ -47,12 +50,13 @@ public class Demultiplexer implements AutoCloseable{
                            this.data.put(tag, deque);
                            c.signal();
 
-                            this.l.unlock();
-
+                           this.l.unlock();
+                       }catch(IOException e){
+                           System.out.println(e.getMessage());
                        }
-                   }catch(IOException e){
-                       System.out.println(e.getMessage());
+
                    }
+
                 })
         };
         threads[0].start();

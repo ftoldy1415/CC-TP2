@@ -5,6 +5,7 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.nio.file.attribute.FileTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -20,11 +21,11 @@ public class MainRececao {
 
         dm.start();
 
-        Cliente c = new Cliente(ipEnviar, port, dm, s);
+        Cliente c = new Cliente(ipEnviar, port, dm, s, "");
 
         //try {
             //Metadados m = new Metadados();
-            List<DatagramPacket> original = c.recebeMetadados();
+        c.comunInicial(new ArrayList<>(), "Guiao8");
             /*
 
             List<List<Map.Entry<String, FileTime>>> finalD = m.deserializePackets(original);
