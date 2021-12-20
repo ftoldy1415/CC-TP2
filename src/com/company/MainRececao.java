@@ -19,7 +19,7 @@ public class MainRececao {
         DatagramSocket s = new DatagramSocket(57201);
         Demultiplexer dm = new Demultiplexer(s);
 
-        dm.start();
+        //dm.start();
 
         Cliente c = new Cliente(ipEnviar, port, dm, s, "");
 

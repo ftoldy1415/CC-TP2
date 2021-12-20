@@ -10,6 +10,7 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 public class Metadados {
     private int mss;
@@ -267,48 +268,55 @@ public class Metadados {
     }
 
 
-
-
-
-
-
-
-
-
-
-
-
-    public List<List<Map.Entry<String, FileTime>>> deserializePackets(List<DatagramPacket> lp){
-        List<List<Map.Entry<String, FileTime>>> listaFinal = new ArrayList<>();
+    public List<Map.Entry<String, FileTime>> deserializePackets(List<DatagramPacket> lp){
+        List<Map.Entry<String, FileTime>> listaFinal = new ArrayList<>();
         Map.Entry<Integer, List<Map.Entry<String, FileTime>>> entry;
         int i = 0;
         for (DatagramPacket dp : lp){
             entry = deserializeFileMeta(lp.get(i++));
-            listaFinal.add(entry.getKey(), entry.getValue());
+            listaFinal.addAll(entry.getValue());
         }
         return listaFinal;
     }
 
-    public List<String> compare(String s , Map<String, FileTime> map) throws IOException {
+    public Map.Entry<List<String>, List<String>> compare(String s , List<Map.Entry<String, FileTime>> metaFile) throws IOException {
         String currentPath = new java.io.File(".").getCanonicalPath();
         String filepath = currentPath + "/" + s + "/";
         System.out.println(filepath);
-        ArrayList<String> files = new ArrayList<>();
-        for (Map.Entry<String,FileTime> e : map.entrySet()){
+        ArrayList<String> filesToAsk  = new ArrayList<>();
+        ArrayList<String> filesToSend = new ArrayList<>();
+        for (Map.Entry<String,FileTime> e : metaFile){
             try {
                 File f = new File(filepath+e.getKey());
-                if (e.getValue() == null);
+                System.out.println(f.toString());
+                if (e.getValue().to(TimeUnit.SECONDS) == 0);
                 else{
                     BasicFileAttributes attr = Files.readAttributes(Path.of(filepath + e.getKey()), BasicFileAttributes.class);
+                    //BasicFileAttributes attr = Files.readAttributes(Path.of(s +x), BasicFileAttributes.class);
+                    System.out.println("FODA-SE");
                     if (attr.lastModifiedTime().compareTo(e.getValue()) < 0){
-                        files.add(e.getKey());
+                        filesToAsk.add(e.getKey());
+                    }
+                    else{
+                        filesToSend.add(e.getKey());
                     }
                 }
             } catch(IOException exception){
-                files.add(e.getKey());
+                System.out.println("Não deu para abrir o ficheiro");
+                filesToAsk.add(e.getKey());
             }
         }
-        return files;
+        String directory = currentPath + "/" + s + "/";
+        File f = new File(directory);
+        List<String> nameMetaFile = metaFile.stream().map(Map.Entry::getKey).collect(Collectors.toList());
+        for(String x : Objects.requireNonNull(f.list())){
+            if(!nameMetaFile.contains(x)){
+                filesToSend.add(x);
+            }
+        }
+
+
+        return new AbstractMap.SimpleEntry<>(filesToAsk, filesToSend);
     }
 
     public int getTotalPackets(){

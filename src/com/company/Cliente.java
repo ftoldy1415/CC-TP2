@@ -47,7 +47,9 @@ public class Cliente implements Runnable{
             this.s.receive(res);
             System.out.println("Recebi a pedra, tamos em comunicação");
             //enviaMetadados
-            //Thread envio = new Thread(() -> enviaMetadados(l));
+            this.dm.start();
+            Thread envio = new Thread(() -> enviaMetadados(l));
+            envio.start();
             //esperar pelo resultado da comparação
             //send compared files
             //criação thread (tag 1, envio de metadados)
@@ -66,8 +68,14 @@ public class Cliente implements Runnable{
                 packetPedra.setAddress(this.ipEnviar);
                 packetPedra.setPort(this.port);
                 this.s.send(packetPedra);
-                //List<DatagramPacket> meta = recebeMetadados();
-                //compare
+                this.dm.start();
+                List<Map.Entry<String, FileTime>> meta = recebeMetadados();
+                Map.Entry<List<String>, List<String>> fileList = m.compare(pasta, meta);
+                System.out.println("\n\nresultado comparação:\n");
+                System.out.println("Files to Ask");
+                fileList.getKey().forEach(System.out::println);
+                System.out.println("Files to Send");
+                fileList.getValue().forEach(System.out::println);
                 //send compare result
                 //receive files
             } catch (IOException ioException) {
@@ -133,7 +141,7 @@ public class Cliente implements Runnable{
 
 
 
-    public List<DatagramPacket> recebeMetadados(){
+    public List<Map.Entry<String, FileTime>> recebeMetadados(){
         List<Map.Entry<String, FileTime>> metaList = new ArrayList<>();
 
         int total, totalRecebidos = 0, received;
@@ -183,9 +191,7 @@ public class Cliente implements Runnable{
                 else{                                              //no caso de nao ser um pacote de controlo vai desserializar e retirar os metadados do pacote
                     e = this.m.deserializeFileMeta(dp);
                     received = e.getKey();
-                    for(Map.Entry<String, FileTime> entry : e.getValue()){
-                        metaList.add(entry);
-                    }
+                    metaList.addAll(e.getValue());
                     numSeqReceived.add(received, true);     //anota o numero de sequencia do pacote como tendo sido recebido
                     totalRecebidos++;                             //aumenta o numero de pacotes recebidos
                 }
@@ -214,7 +220,7 @@ public class Cliente implements Runnable{
         } catch (IOException | InterruptedException ex) {
             ex.printStackTrace();
         }
-        return null;
+        return metaList;
     }
 
 
@@ -234,30 +240,7 @@ public class Cliente implements Runnable{
 
 
 
-    public List <byte[]> fileToByte(File file) throws IOException {
-        FileInputStream fl = new FileInputStream(file);
-        int size = (int) file.length();
-        int packetSize = 100;
-        int lastPacketSize = size % packetSize;
-        System.out.println(lastPacketSize);
-        int fullPackets = size/packetSize;
-        System.out.println(fullPackets);
-        List<byte[]> lista = new ArrayList<>();
-        byte[] arr = new byte[100];
-        int offset = 0;
-        while (offset != fullPackets * packetSize && fl.readNBytes(arr, 0, packetSize) > 0){
-            lista.add(arr.clone());
-            offset += packetSize;
-            System.out.println(offset);
-        }
-        byte[] lastArr = new byte[lastPacketSize];
-        fl.readNBytes(lastArr, 0, lastPacketSize);
-        lista.add(lastArr);
 
-        fl.close();
-
-        return lista;
-    }
 
     public void writeByte(List<byte[]> bytes) {
         File f = new File("teste.pl");

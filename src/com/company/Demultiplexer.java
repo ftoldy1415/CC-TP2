@@ -16,12 +16,14 @@ public class Demultiplexer implements AutoCloseable{
     private DatagramSocket s;
     private Map<Integer, Condition> conds;
     private Map<Integer, Deque<DatagramPacket>> data;
+    private Map<Integer,Boolean> exceptions;
 
     public Demultiplexer(DatagramSocket s){
         this.l     = new ReentrantLock();
         this.s     = s;
         this.conds = new HashMap<>();
         this.data  = new HashMap<>();
+        this.exceptions = new HashMap<>();
     }
 
     public void start(){

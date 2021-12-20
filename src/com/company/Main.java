@@ -23,24 +23,30 @@ public class Main {
 
 
     public static void main(String[] args) throws IOException {
-
+        /*
         InetAddress ipEnviar = InetAddress.getByName("localhost");
         int port = 57201;
 
         DatagramSocket s = new DatagramSocket(57200);
         Demultiplexer dm = new Demultiplexer(s);
 
-        dm.start();
+        //dm.start();
 
         Cliente c = new Cliente(ipEnviar, port, dm, s, args[0]);
 
 
         Metadados m = new Metadados();
-        //List<DatagramPacket> original = m.serializeDataToPacket("/Users/brunofilipemirandapereira/Documents/Universidade/3_ANO/1_Semestre/SD/SD_PL/src/Guiao8/", "Guiao8");
-        //System.out.println("O TAMANHO DESTA MERDA É :" + original.size());
+        List<DatagramPacket> original = m.serializeDataToPacket("/Users/brunofilipemirandapereira/Documents/Universidade/3_ANO/1_Semestre/Teste/Guiao8/", "Guiao8");
+        System.out.println("O TAMANHO DESTA MERDA É :" + original.size());
 
-        c.comunInicial(new ArrayList<>(), "Guiao8");
+        c.comunInicial(original, "Guiao8");
 
+         */
+        Ficheiro ficheiro = new Ficheiro();
+        File f = new File("/Users/brunofilipemirandapereira/Documents/Universidade/3_ANO/1_Semestre/Teste/Guiao8/ThreadedClient.java");
+        List<DatagramPacket> serializado = ficheiro.serializeFile(f);
+        List<byte[]> data = ficheiro.unpackData(serializado);
+        ficheiro.deserializeFile(data);
     }
 }
 
