@@ -141,6 +141,7 @@ public class Ficheiro {
         System.out.println("SIZE DA LISTA DE PACKETS" + l.size());
         int cap = l.size();
         List<byte[]> res = new ArrayList<>(3);
+        Map<Integer, byte[]> aux = new HashMap<>();
         byte[] name = null;
 
         for(DatagramPacket pacote : l){
@@ -152,14 +153,14 @@ public class Ficheiro {
             if(name == null){
                 name = new byte[name_size];
                 System.arraycopy(data, 3,name, 0, name_size);
-                res.add(0,name);
+                aux.put(0,name);
             }
             if(data[index_term+1] == 0 && data[index_term] == 0){
                 byte[] fileData = new byte[this.mss - 9 - name_size];
                 System.arraycopy(data, 3+name_size, fileData, 0, this.mss-9-name_size);
                 short seqNum = (short) (((data[this.mss-3] & 0xFF) << 8) | (data[this.mss-4] & 0xFF));
                 System.out.println("Número de sequencia " + seqNum + " | Tamanho do pacote: " + (this.mss - 9 - name_size));
-                res.add(seqNum,fileData);
+                aux.put((int) seqNum,fileData);
             }
             else{
                 short dataSize = (short) (((data[index_term+1] & 0xFF) << 8) | (data[index_term] & 0xFF));
@@ -168,10 +169,16 @@ public class Ficheiro {
 
                 short seqNum = (short) (((data[this.mss-3] & 0xFF) << 8) | (data[this.mss-4] & 0xFF));
                 System.out.println("Número de sequencia " + seqNum + " | Tamanho do pacote: " + dataSize);
-                res.add(seqNum,fileData);
+                aux.put((int) seqNum,fileData);
             }
 
         }
+
+        for(int i = 0; i < aux.size(); i++){
+            if(aux.containsKey(i)) res.add(aux.get(i));
+        }
+
+
         System.out.println("Tamanho res: " + res.size());
         return res;
     }
