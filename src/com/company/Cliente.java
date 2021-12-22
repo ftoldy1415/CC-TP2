@@ -44,11 +44,11 @@ public class Cliente implements Runnable{
             this.dm.send(pi);
             System.out.println("Mandei a pedra");
             //this.s.setSoTimeout(100);
-            this.dm.timeoutRequest(0,100);
             this.dm.start();
             byte[] dataReceived = new byte[1024];
             DatagramPacket res = new DatagramPacket(dataReceived, dataReceived.length);
             //this.s.receive(res);
+            this.dm.timeoutRequest(0,100);
             res = this.dm.receive(0);
             this.dm.timeoutRequest(0,0);
             System.out.println("Recebi a pedra, tamos em comunicação");
@@ -110,6 +110,7 @@ public class Cliente implements Runnable{
                 //send files
                 sendAllFiles(fileList.getValue(), pasta);
                 sendConfirmationPacket();
+
 
             } catch (IOException | ReceiveTimeOut | InterruptedException ioException) {
                 ioException.printStackTrace();
@@ -509,6 +510,7 @@ public class Cliente implements Runnable{
         }
 
     }
+
 
     public void run() {
     }

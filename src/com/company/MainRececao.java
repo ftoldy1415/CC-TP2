@@ -14,7 +14,7 @@ public class MainRececao {
     public static void main(String[] args) throws IOException {
         try {
             DatagramSocket s = new DatagramSocket(12346);
-            Demultiplexer d = new Demultiplexer(s,12346);
+            Demultiplexer d = new Demultiplexer(s,12346, InetAddress.getByName(args[1]));
             Ficheiro f      = new Ficheiro();
             InetAddress ipEnvio = InetAddress.getByName(args[1]);
             System.out.println(ipEnvio.toString());

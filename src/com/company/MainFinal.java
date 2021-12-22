@@ -10,7 +10,7 @@ public class MainFinal {
 
         try {
             DatagramSocket s = new DatagramSocket(12345);
-            Demultiplexer d = new Demultiplexer(s,12345);
+            Demultiplexer d = new Demultiplexer(s,12345, InetAddress.getByName(args[1]));
             Ficheiro f = new Ficheiro();
 
             InetAddress ipEnvio = InetAddress.getByName(args[1]);

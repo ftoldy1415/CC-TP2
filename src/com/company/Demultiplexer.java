@@ -18,8 +18,9 @@ public class Demultiplexer implements AutoCloseable{
     private Map<Integer,Boolean> exceptions;
     private int timeout;
     private int port;
+    private InetAddress ip;
 
-    public Demultiplexer(DatagramSocket s, int port){
+    public Demultiplexer(DatagramSocket s, int port , InetAddress ipEnvio){
         this.l     = new ReentrantLock();
         this.s     = s;
         this.conds = new HashMap<>();
@@ -27,6 +28,7 @@ public class Demultiplexer implements AutoCloseable{
         this.timeoutRequests = new HashMap<>();
         this.exceptions = new HashMap<>();
         this.port = port;
+        this.ip = ipEnvio;
     }
 
     public void start(){
@@ -42,24 +44,25 @@ public class Demultiplexer implements AutoCloseable{
                        try{
                            s.setSoTimeout(checkTimeout());
                            s.receive(packet);
+                           if(packet.getAddress() == this.ip) {
+                               int tag;
+                               tag = packetData[0];
+                               if (tag != -1) {
+                                   this.l.lock();
+                                   if (!this.conds.containsKey(tag)) {
+                                       this.conds.put(tag, this.l.newCondition());
+                                       this.data.put(tag, new ArrayDeque<>());
+                                       this.exceptions.put(tag, false);
+                                       this.timeoutRequests.put(tag, false);
+                                   }
+                                   Condition c = this.conds.get(tag);
+                                   Deque<DatagramPacket> deque = this.data.get(tag);
+                                   deque.add(packet);
+                                   this.data.put(tag, deque);
+                                   c.signal();
 
-                           int tag;
-                           tag = packetData[0];
-                           if(tag != -1 ) {
-                               this.l.lock();
-                               if (!this.conds.containsKey(tag)) {
-                                   this.conds.put(tag, this.l.newCondition());
-                                   this.data.put(tag, new ArrayDeque<>());
-                                   this.exceptions.put(tag, false);
-                                   this.timeoutRequests.put(tag, false);
+                                   this.l.unlock();
                                }
-                               Condition c = this.conds.get(tag);
-                               Deque<DatagramPacket> deque = this.data.get(tag);
-                               deque.add(packet);
-                               this.data.put(tag, deque);
-                               c.signal();
-
-                               this.l.unlock();
                            }
                        }catch(SocketTimeoutException e){
                            this.l.lock();
