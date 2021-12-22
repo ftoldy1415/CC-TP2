@@ -31,6 +31,7 @@ public class Cliente implements Runnable{
         this.folderName = folderName;
         this.f          = ficheiro;
     }
+    
 
     public void comunInicial(List<DatagramPacket> l, String pasta){
         byte[] buffer = new byte[1024];

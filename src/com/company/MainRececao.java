@@ -21,7 +21,7 @@ public class MainRececao {
             System.out.println(args[0]);
             Cliente c = new Cliente(ipEnvio,12345,d,s,args[0],f);
             Metadados m = new Metadados();
-            List<DatagramPacket> original = m.serializeDataToPacket(args[0], "Guiao8");
+            List<DatagramPacket> original = m.serializeDataToPacket(args[0]);
             c.comunInicial(original ,args[0]);
 
 

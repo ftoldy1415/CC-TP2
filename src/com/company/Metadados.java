@@ -216,7 +216,7 @@ public class Metadados {
     }
 
 
-    public List<DatagramPacket> serializeDataToPacket(String path, String pasta) throws IOException {
+    public List<DatagramPacket> serializeDataToPacket(String path) throws IOException {
         ArrayList<DatagramPacket> resultSerialized = new ArrayList<>();
         ArrayList<Map.Entry<Integer,byte[]>> provisional = new ArrayList<>();
 
