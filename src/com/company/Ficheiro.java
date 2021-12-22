@@ -4,7 +4,9 @@ import java.io.*;
 import java.net.DatagramPacket;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class Ficheiro {
 
@@ -32,7 +34,7 @@ public class Ficheiro {
     }
 
 
-    private DatagramPacket fechaPacote(byte[] packetBuffer, short seq_number, short total, int packetSize){
+    private DatagramPacket closePacket(byte[] packetBuffer, short seq_number, short total, int packetSize){
         packetBuffer[packetSize] = 0;                                    // inserir bytes terminacao
         packetBuffer[packetSize+1] = 0;
         packetBuffer[packetSize+2] = (byte) (seq_number & 0xff);           // inserir número de sequencia no pacote
@@ -43,7 +45,8 @@ public class Ficheiro {
         return new DatagramPacket(packetBuffer.clone(), this.mss);
     }
 
-    private DatagramPacket fechaPacoteFinal(byte[] packetBuffer, short seq_number, short total, int packetSize, short dataSize){
+
+    private DatagramPacket closeFinalPacket(byte[] packetBuffer, short seq_number, short total, int packetSize, short dataSize){
         packetBuffer[packetSize] = (byte) (dataSize & 0xff);             // inserir tamanho dos dados em vez do byte terminacao
         packetBuffer[packetSize+1] = (byte) ((dataSize >> 8) & 0xff);
         packetBuffer[packetSize+2] = (byte) (seq_number & 0xff);           // inserir número de sequencia no pacote
@@ -79,7 +82,7 @@ public class Ficheiro {
             arr[1] = (byte) (name_size & 0xff);
             arr[2] = (byte) ((name_size >> 8) & 0xff);
             System.arraycopy(file_name,  0, arr, 3,file_name.length);
-            toSend = fechaPacote(arr, seq_number, total, 1 + 2 + file_name.length + packetSize);
+            toSend = closePacket(arr, seq_number, total, 1 + 2 + file_name.length + packetSize);
             lista.add(toSend);
             System.out.println("Número de sequencia dentro da serialize" + seq_number);
             seq_number++;
@@ -92,12 +95,45 @@ public class Ficheiro {
         lastArr[1] = (byte) (name_size & 0xff);
         lastArr[2] = (byte) ((name_size >> 8) & 0xff);
         System.arraycopy(file_name,  0, lastArr, 3,file_name.length);
-        toSend = fechaPacoteFinal(lastArr, seq_number, total, 1 + 2 + file_name.length + packetSize, (short) lastPacketSize);
+        toSend = closeFinalPacket(lastArr, seq_number, total, 1 + 2 + file_name.length + packetSize, (short) lastPacketSize);
         lista.add(toSend);
 
         fl.close();
 
         return lista;
+    }
+
+
+    public Map<String, List<byte[]>> unpackAllData(Map<String, List<DatagramPacket>> listByName){
+        Map<String, List<byte[]>> finalMap = new HashMap<>();
+        for(Map.Entry<String, List<DatagramPacket>> e : listByName.entrySet()){
+            finalMap.put(e.getKey(), unpackData(e.getValue()));
+        }
+        return finalMap;
+    }
+
+
+    public Map<String,List<DatagramPacket>> organizePacketsByName(List<DatagramPacket> l){
+        Map<String,List<DatagramPacket>> res = new HashMap<>();
+        short name_size;
+        for (DatagramPacket p : l){
+            byte[] data = p.getData();
+            name_size = (short) (((data[2] & 0xFF) << 8) | (data[1] & 0xFF));
+            byte[] filename = new byte[name_size];
+            System.arraycopy(data, 3, filename, 0, name_size);
+
+            String nameFinal = new String(filename);
+            List<DatagramPacket> list;
+            if(!res.containsKey(nameFinal)){
+                list = new ArrayList<>();
+            }
+            else{
+                list = res.get(nameFinal);
+            }
+            list.add(p);
+            res.put(nameFinal, list);
+        }
+        return res;
     }
 
 
@@ -122,7 +158,7 @@ public class Ficheiro {
                 byte[] fileData = new byte[this.mss - 9 - name_size];
                 System.arraycopy(data, 3+name_size, fileData, 0, this.mss-9-name_size);
                 short seqNum = (short) (((data[this.mss-3] & 0xFF) << 8) | (data[this.mss-4] & 0xFF));
-                System.out.println("Nome de sequencia" + seqNum + " | Tamanho do pacote: " + (this.mss - 9 - name_size));
+                System.out.println("Número de sequencia " + seqNum + " | Tamanho do pacote: " + (this.mss - 9 - name_size));
                 res.add(seqNum,fileData);
             }
             else{
@@ -131,7 +167,7 @@ public class Ficheiro {
                 System.arraycopy(data, 3+name_size, fileData, 0, dataSize);
 
                 short seqNum = (short) (((data[this.mss-3] & 0xFF) << 8) | (data[this.mss-4] & 0xFF));
-                System.out.println("Nome de sequencia" + seqNum + " | Tamanho do pacote: " + dataSize);
+                System.out.println("Número de sequencia " + seqNum + " | Tamanho do pacote: " + dataSize);
                 res.add(seqNum,fileData);
             }
 
@@ -140,18 +176,20 @@ public class Ficheiro {
         return res;
     }
 
-    public void deserializeFile(List<byte[]> l){
+
+    public void createFiles(Map<String, List<byte[]>> m, String pasta){
+        for (Map.Entry<String, List<byte[]>> e : m.entrySet()){
+            deserializeAndCreateFile(e.getValue(), e.getKey(), pasta);
+        }
+    }
+
+
+    public void deserializeAndCreateFile(List<byte[]> l, String name, String pasta){
         String filename = new String(l.get(0));
         System.out.println(filename);
-        String currentPath = null;
-        try {
-            currentPath = new File(".").getCanonicalPath();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        String filepath = currentPath + "/" + filename;
+        String filepath = pasta + filename;
         System.out.println(filepath);
-        File f = new File("FODAse.txt");
+        File f = new File(filepath);
         try {
             f.createNewFile();
         } catch (IOException e) {
@@ -169,4 +207,9 @@ public class Ficheiro {
             System.out.println("Exception: " + e);
         }
     }
+
+    public void sendFiles(List<String> files, String folder){
+
+    }
+
 }

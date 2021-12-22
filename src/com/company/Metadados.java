@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
@@ -18,12 +19,80 @@ public class Metadados {
     private int totalPackets;
     //0 -> comunicação inicial
     //1 -> pacotes de metadados
-
+    //2 -> pacotes de ficheiros
 
 
     public Metadados(){
         this.mss = 1024;
         this.metaSize = this.mss-6;
+    }
+
+
+    public List<DatagramPacket> serializeAsk(List<String> l){
+        List<DatagramPacket> finalList = new ArrayList<>();
+        int sizetotal = 0;
+        for (String s : l){
+            sizetotal += s.getBytes().length ; //tamanho do nome
+            sizetotal += 2;                    //short indicativo do tamanho do nome
+        }
+        int numPackets = (sizetotal/1019) + 1;
+
+        int index = 1;
+        int seq_num = 0;
+        byte[] data = new byte[1024];
+        data[0] = 1; //tag 1
+        for(String s : l){
+            byte[] name = s.getBytes();
+            short size_name = (short) name.length;
+            if(index < this.mss-6){
+                data[index++] = (byte) (size_name & 0xff);
+                data[index++] = (byte) ((size_name >> 8) & 0xff);
+                System.arraycopy(name, 0, data, index, size_name);
+                index += size_name;
+            }
+            else{
+                fechaPacote(data, index, seq_num);
+                index += 4;
+                finalList.add(criaPacote(new AbstractMap.SimpleEntry<>(index, data), seq_num+1));
+                seq_num++;
+                index = 1;
+                data = new byte[1024];
+                data[0] = 1;
+                data[index++] = (byte) (size_name & 0xff);
+                data[index++] = (byte) ((size_name >> 8) & 0xff);
+                System.arraycopy(name, 0, data, index, size_name);
+                index += size_name;
+            }
+        }
+        if (seq_num < numPackets){
+            fechaPacote(data, index, seq_num);
+            index += 4;
+            finalList.add(criaPacote(new AbstractMap.SimpleEntry<>(index, data), seq_num+1));
+        }
+        return finalList;
+    }
+
+
+    public List<String> deserializeAsk(List<DatagramPacket> filesToAskPacket){
+        List<String> filesList = new ArrayList<>();
+        byte[] data, nameBytes;
+        String name;
+        int index ;
+        short name_size;
+        for(DatagramPacket p : filesToAskPacket){
+            data = p.getData();
+            index = 1;
+            while(data[index] != 0 && data[index+1] != 0 ) {
+                name_size = (short) (((data[index + 1] & 0xFF) << 8) | (data[index] & 0xFF));
+                nameBytes = new byte[name_size];
+                index += 2;
+                System.arraycopy(data, index, nameBytes, 0, name_size);
+                name = new String(nameBytes);
+                filesList.add(name);
+            }
+
+        }
+        return filesList;
     }
 
 
@@ -147,13 +216,13 @@ public class Metadados {
     }
 
 
-    public List<DatagramPacket> serializeDataToPacket(String s, String pasta) throws IOException {
+    public List<DatagramPacket> serializeDataToPacket(String path, String pasta) throws IOException {
         ArrayList<DatagramPacket> resultSerialized = new ArrayList<>();
         ArrayList<Map.Entry<Integer,byte[]>> provisional = new ArrayList<>();
 
-        File f = new File(s);
+        File f = new File(path);
         int size_final;
-        short seq_number = 1;
+        short seq_number = 0;
         int resultSerializedIndex = 0;
 
 
@@ -162,7 +231,7 @@ public class Metadados {
         packetBuffer[0] = 1;
         size_final = 1;
         for(String x : Objects.requireNonNull(f.list())){
-            BasicFileAttributes attr = Files.readAttributes(Path.of(s +x), BasicFileAttributes.class);
+            BasicFileAttributes attr = Files.readAttributes(Path.of(path +x), BasicFileAttributes.class);
             byte[] serializado = serializeMetadadosFicheiro(attr,x);
 
             if (serializado.length < metaSize-size_final){
@@ -181,8 +250,8 @@ public class Metadados {
             }
         }
 
-        DatagramPacket pastaPacket = serializePastaData(s, pasta, (short) (seq_number+1)); //serializa o nome da pasta
-        resultSerialized.add(pastaPacket);
+       //DatagramPacket pastaPacket = serializePastaData(path, pasta, (short) (seq_number+1)); //serializa o nome da pasta
+        //resultSerialized.add(pastaPacket);
 
         System.out.println("Final de Pacote");
         packetBufferData = fechaPacote(packetBuffer, size_final, seq_number);
@@ -279,9 +348,8 @@ public class Metadados {
         return listaFinal;
     }
 
-    public Map.Entry<List<String>, List<String>> compare(String s , List<Map.Entry<String, FileTime>> metaFile) throws IOException {
-        String currentPath = new java.io.File(".").getCanonicalPath();
-        String filepath = currentPath + "/" + s + "/";
+    public Map.Entry<List<String>, List<String>> compare(String pasta , List<Map.Entry<String, FileTime>> metaFile) throws IOException {
+        String filepath = pasta;
         System.out.println(filepath);
         ArrayList<String> filesToAsk  = new ArrayList<>();
         ArrayList<String> filesToSend = new ArrayList<>();
@@ -297,7 +365,11 @@ public class Metadados {
                     if (attr.lastModifiedTime().compareTo(e.getValue()) < 0){
                         filesToAsk.add(e.getKey());
                     }
-                    else{
+                    else if(attr.lastModifiedTime().compareTo(e.getValue()) > 0){
+                        System.out.println(e.getValue());
+                        System.out.println(attr.lastModifiedTime());
+
+                        System.out.println("ola");
                         filesToSend.add(e.getKey());
                     }
                 }
@@ -306,11 +378,15 @@ public class Metadados {
                 filesToAsk.add(e.getKey());
             }
         }
-        String directory = currentPath + "/" + s + "/";
+        String directory = pasta;
         File f = new File(directory);
         List<String> nameMetaFile = metaFile.stream().map(Map.Entry::getKey).collect(Collectors.toList());
+        System.out.println("Ficheiro nos metadados: ");
+        System.out.println(metaFile.toString());
         for(String x : Objects.requireNonNull(f.list())){
+            System.out.println("Ficheiro na diretoria: " + x);
             if(!nameMetaFile.contains(x)){
+                System.out.println("Adicionei porque nao estava nos metadados");
                 filesToSend.add(x);
             }
         }

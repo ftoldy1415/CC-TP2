@@ -13,23 +13,23 @@ import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 
-
-
 public class Cliente implements Runnable{
     private InetAddress ipEnviar;
     private int port;
     private Demultiplexer dm;
     private DatagramSocket s;
     private Metadados m;
+    private Ficheiro f;
     private String folderName;
 
-    public Cliente(InetAddress ip, int port, Demultiplexer dm, DatagramSocket s, String folderName) throws SocketException {
+    public Cliente(InetAddress ip, int port, Demultiplexer dm, DatagramSocket s, String folderName , Ficheiro ficheiro) throws SocketException {
         this.ipEnviar   = ip;
         this.port       = port;
         this.dm         = dm;
         this.s          = s;
         this.m          = new Metadados();
         this.folderName = folderName;
+        this.f          = ficheiro;
     }
 
     public void comunInicial(List<DatagramPacket> l, String pasta){
@@ -39,46 +39,78 @@ public class Cliente implements Runnable{
         pi.setAddress(this.ipEnviar);
         pi.setPort(this.port);
         try {
-            this.s.send(pi);
+            //this.s.send(pi);
+            this.dm.send(pi);
             System.out.println("Mandei a pedra");
-            this.s.setSoTimeout(100);
+            //this.s.setSoTimeout(100);
+            this.dm.timeoutRequest(0,100);
+            this.dm.start();
             byte[] dataReceived = new byte[1024];
             DatagramPacket res = new DatagramPacket(dataReceived, dataReceived.length);
-            this.s.receive(res);
+            //this.s.receive(res);
+            res = this.dm.receive(0);
+            this.dm.timeoutRequest(0,0);
             System.out.println("Recebi a pedra, tamos em comunicação");
             //enviaMetadados
-            this.dm.start();
-            Thread envio = new Thread(() -> enviaMetadados(l));
-            envio.start();
-            //esperar pelo resultado da comparação
+            //this.dm.start();
+            //Thread envio = new Thread(() -> enviaMetadados(l));
+            enviaMetadados(l);
+            //receive compare
+            List<String> fileToSend = receiveResultCompare();
+            //send files
+            System.out.println("\nTamanho do resultado da comparacao:: " + fileToSend.size());
+            if(fileToSend.size() != 0){
+                sendAllFiles(fileToSend, pasta);
+            }
+            //confirmation packet (no more files)
+            sendConfirmationPacket();
+            System.out.println(fileToSend.toString());
+            //receive files
+            List<DatagramPacket> files = receiveFiles();
+            System.out.println("files.size(): " + files.size());
+            compileFiles(files,pasta);
+
+
+            //confirmacao de 'vou enviar ficheiros'
             //send compared files
             //criação thread (tag 1, envio de metadados)
-        } catch (IOException e) {
+        } catch (IOException | ReceiveTimeOut | InterruptedException e) {
             System.out.println("Não recebi a pedra de volta");
             try {
                 byte[] pedra = new byte[1024];
                 pedra[0] = 0;
-                this.s.setSoTimeout(0);
+                //this.s.setSoTimeout(0);
                 System.out.println("Tou a espera de uma pedra");
                 byte[] dataReceived = new byte[1024];
                 DatagramPacket res = new DatagramPacket(dataReceived, dataReceived.length);
-                this.s.receive(res);
+                //this.s.receive(res);
+                res = this.dm.receive(0);
                 System.out.println("Recebi uma pedra, vou mandar uma pedra de volta");
                 DatagramPacket packetPedra = new DatagramPacket(pedra, pedra.length);
                 packetPedra.setAddress(this.ipEnviar);
                 packetPedra.setPort(this.port);
-                this.s.send(packetPedra);
-                this.dm.start();
+                //this.s.send(packetPedra);
+                this.dm.send(packetPedra);
+                //this.dm.start();
                 List<Map.Entry<String, FileTime>> meta = recebeMetadados();
-                Map.Entry<List<String>, List<String>> fileList = m.compare(pasta, meta);
+                Map.Entry<List<String>, List<String>> fileList = m.compare(pasta, meta);//comparar os metadados recebidos do outro nó com os ficheiros da pasta deste nó
                 System.out.println("\n\nresultado comparação:\n");
-                System.out.println("Files to Ask");
+                System.out.println("\nFiles to Ask");
                 fileList.getKey().forEach(System.out::println);
-                System.out.println("Files to Send");
+                System.out.println("\nFiles to Send");
                 fileList.getValue().forEach(System.out::println);
                 //send compare result
-                //receive files
-            } catch (IOException ioException) {
+                List<DatagramPacket> lp = this.m.serializeAsk(fileList.getKey());
+                sendFileRequest(lp);
+                //receive Files
+                List<DatagramPacket> files = receiveFiles();
+                System.out.println("files.size(): " + files.size());
+                compileFiles(files,pasta);
+                //send files
+                sendAllFiles(fileList.getValue(), pasta);
+                sendConfirmationPacket();
+
+            } catch (IOException | ReceiveTimeOut | InterruptedException ioException) {
                 ioException.printStackTrace();
             }
 
@@ -106,11 +138,12 @@ public class Cliente implements Runnable{
 
         while(!response){                                          //verifica se já foi recebida a resposta de confirmação
             try{
-                this.s.setSoTimeout(5000);                          //set do timeout da resposta
+                this.dm.timeoutRequest(1,1000);                    //set do timeout da resposta
                 receivePacket = this.dm.receive(1);//bloqueia até receber uma resposta
+                this.dm.timeoutRequest(1,0);
                 System.out.println("Recebi o pacote de confirmação");
                 response = true;//
-            }catch(IOException | InterruptedException e){
+            }catch(IOException | InterruptedException |  ReceiveTimeOut e){
                 byte[] controlBuffer = new byte[1024];              //buffer para pacote de controlo
                 short control = -1;                                 //flag de controlo
                 controlBuffer[0] = 1;                               //tag do pacote
@@ -131,7 +164,7 @@ public class Cliente implements Runnable{
                         this.dm.send(packet);
                         index += 2;
                     }
-                } catch (IOException | InterruptedException exception) {
+                } catch (IOException | InterruptedException | ReceiveTimeOut exception) {
                     exception.printStackTrace();
                 }
             }
@@ -173,7 +206,7 @@ public class Cliente implements Runnable{
             totalRecebidos++;                                     //incrementar o total de pacotes recebidos
             System.out.println("NUMERO TOTAL DE PACOTES: " + total);
             while(totalRecebidos < total){
-                this.s.setSoTimeout(10000);
+                this.s.setSoTimeout(10000);                       //nao deve estar a funcionar
                 dp = this.dm.receive(1);                       //receber um pacote
                 data = dp.getData();
                 short controlo = (short)(((data[3] & 0xFF) << 8) | (data[2] & 0xFF));
@@ -219,6 +252,8 @@ public class Cliente implements Runnable{
 
         } catch (IOException | InterruptedException ex) {
             ex.printStackTrace();
+        }catch (ReceiveTimeOut erro){
+            System.out.println(erro.getMessage());
         }
         return metaList;
     }
@@ -238,8 +273,93 @@ public class Cliente implements Runnable{
     }
 
 
+    public void sendConfirmationPacket(){
+        byte[] dataPacket = new byte[1024];
+        dataPacket[0] = 2;
+        short n = -1;
+        dataPacket[1] = (byte) (n & 0xff);
+        dataPacket[2] = (byte) ((n >> 8) & 0xff);
+        DatagramPacket packet = new DatagramPacket(dataPacket, dataPacket.length);
+        packet.setAddress(this.ipEnviar);
+        packet.setPort(this.port);
+
+        this.dm.send(packet);
+    }
+
+    public List<DatagramPacket> receiveFiles(){
+        List<DatagramPacket> packetList = new ArrayList<>();
+        DatagramPacket packet;
+        byte[] data;
+        try {
+            packet = this.dm.receive(2);
+            data = packet.getData();
+            System.out.println("Primeiro byte: " + data[1] + " | Segundo byte: " + data[2]);
+            System.out.println("Parei aqui");
+            while(data[1] != -1 && data[2] != -1){
+                packetList.add(packet);
+                try {
+                    packet = this.dm.receive(2);
+                    data = packet.getData();
+                } catch (IOException | InterruptedException | ReceiveTimeOut e) {
+                    e.printStackTrace();
+                }
+            }
+        } catch (IOException | ReceiveTimeOut | InterruptedException e) {
+            e.printStackTrace();
+        }
+
+        return packetList;
+    }
+
+    public void compileFiles(List<DatagramPacket> list, String pasta){
+        Map<String, List<DatagramPacket>> packetsByName = this.f.organizePacketsByName(list);
+        Map<String, List<byte[]>> deserializedPackets = this.f.unpackAllData(packetsByName);
+        this.f.createFiles(deserializedPackets, pasta);
+    }
 
 
+    public void sendCompareResult(List<String> filesToAsk){
+        m.serializeAsk(filesToAsk);
+    }
+
+    public void sendAllFiles(List<String> fileList, String pasta){
+        try{
+            int n_threads = fileList.size();
+            Thread[] threadsEnvio = new Thread[n_threads];
+            int i = 0;
+            for(String file : fileList){
+                threadsEnvio[i] = new Thread(() -> sendFile(file, pasta));
+                i++;
+            }
+
+            for(i = 0; i < n_threads; i++){
+                threadsEnvio[i].start();
+            }
+
+            for(i = 0; i < n_threads; i++){
+                threadsEnvio[i].join();
+            }
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+    }
+
+    public void sendFile(String s, String pasta){
+        File fich = new File(pasta + "/" + s);
+        System.out.println("Sending File: " + fich);
+
+        try{
+            List<DatagramPacket> packetList = this.f.serializeFile(fich);
+            for(DatagramPacket p : packetList){
+                p.setAddress(this.ipEnviar);
+                p.setPort(this.port);
+                this.dm.send(p);
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
 
 
     public void writeByte(List<byte[]> bytes) {
@@ -270,6 +390,124 @@ public class Cliente implements Runnable{
     //Envio dos Metadados
     //Envio dos dados
 
+    public List<String> receiveResultCompare(){
+        List<String> filesToSend = new ArrayList<>();
+        List<Integer> seqReceived = new ArrayList<>();
+        int totalReceived = -1;
+        int total = 0;
+        int index = 1;
+        int name_size,seqNum;
+        byte[] nameBytes;
+        try {
+            while(totalReceived < total) {
+                this.dm.timeoutRequest(1,1000);
+                DatagramPacket p = this.dm.receive(1);
+                System.out.println("::::::  receive compare ::::::");
+                byte[] pData = p.getData();
+                short control = (short) (((pData[2] & 0xFF) << 8) | (pData[1] & 0xFF));
+                if(control == -1){
+                    int missingIndex = 0;
+                    byte[] missing = new byte[1024];
+                    for(int i = 0; i < seqReceived.size() ; i++){
+                        if(!seqReceived.contains(i)){
+                            missing[missingIndex++] = (byte) (i & 0xFF);
+                            missing[missingIndex++] = (byte) ((i >> 8) & 0xFF);
+                        }
+                    }
+                    missing[missingIndex++] = (byte) (-1 & 0xFF);
+                    missing[missingIndex++] = (byte) ((-1 >> 8) & 0xFF);
+                }else{
+                    index = 1;
+                    System.out.println(":::: else ::::");
+                    System.out.println("Primeiro byte: " + pData[index] + " | Segundo byte: " + pData[index+1]);
+                    while(index < pData.length){
+                        if(pData[index] == 0 && pData[index+1] == 0) break;
+
+                        name_size = (short) (((pData[index + 1] & 0xFF) << 8) | (pData[index] & 0xFF));
+                        nameBytes = new byte[name_size];
+                        index += 2;
+                        System.arraycopy(pData,index,nameBytes,0,name_size);
+                        String name = new String(nameBytes);
+                        System.out.println("name LIDO ::" + name);
+                        filesToSend.add(name);
+                        index += name_size;
+
+                    }
+                    index += 2;
+                    seqNum = (short) (((pData[index + 1] & 0xFF) << 8) | (pData[index] & 0xFF));
+                    System.out.println("Seq number receive files: " + seqNum);
+                    seqReceived.add(seqNum);
+                    if(totalReceived == -1 && total == 0){
+                        index += 2;
+                        total = (((pData[index + 1] & 0xFF) << 8) | (pData[index] & 0xFF));
+                        totalReceived = 1;
+                        System.out.println("total:: " + total);
+                    }else{
+                        totalReceived++;
+                    }
+                }
+            }
+
+        } catch (InterruptedException | IOException | ReceiveTimeOut ignore) {
+            System.out.println("" +
+                    "");
+        }
+        short finalConfirmation = -1;
+        byte[] confirmation = new byte[1024];
+        confirmation[0] = 1;
+        confirmation[1] = (byte) (finalConfirmation & 0xff);
+        confirmation[2] = (byte) ((finalConfirmation >> 8) & 0xff);
+        DatagramPacket confirmationPacket = new DatagramPacket(confirmation, confirmation.length);
+        confirmationPacket.setAddress(this.ipEnviar);
+        confirmationPacket.setPort(this.port);
+        this.dm.send(confirmationPacket);
+
+        return filesToSend;
+    }
+
+    public void sendFileRequest(List<DatagramPacket> lp){
+        for(DatagramPacket p : lp){
+            p.setAddress(this.ipEnviar);
+            p.setPort(this.port);
+            this.dm.send(p);
+        }
+        boolean response = false;
+        while(!response) {
+            try {
+                //this.dm.timeoutRequest(1, 2000);
+                DatagramPacket Confirmationresponse = this.dm.receive(1);
+                response = true;
+            } catch (ReceiveTimeOut | IOException | InterruptedException e) {
+                System.out.println("time out sendFileRequest");
+                byte[] controlBuffer = new byte[1024];              //buffer para pacote de controlo
+                short control = -1;                                 //flag de controlo
+                controlBuffer[0] = 1;                               //tag do pacote
+                controlBuffer[1] = (byte) (control & 0xff);         //inicializar o primeiro byte da flag de controlo
+                controlBuffer[2] = (byte) ((control >> 8) & 0xff);  //inicializar o segundo byte da flag de controlo
+                DatagramPacket controlPacket = new DatagramPacket(controlBuffer, controlBuffer.length); //pacote a enviar
+                controlPacket.setAddress(this.ipEnviar);            //set do endereço ip para onde vai ser enviado o pacote
+                controlPacket.setPort(this.port);                   //set da porta para onde sera reencaminhado o pacote no destino
+                this.dm.send(controlPacket);
+                try {
+                    int seqNum;
+                    int index = 1;
+                    DatagramPacket missingPackets = this.dm.receive(1);
+                    byte[] missingPacketsData = missingPackets.getData();   //extrair os dados do pacote
+                    while ((seqNum = (short) (((missingPacketsData[index + 1] & 0xFF) << 8) | (missingPacketsData[index] & 0xFF))) != -1) {
+                        //reenviar os pacotes que nao chegaram ao destino
+                        DatagramPacket packet = lp.get(seqNum);
+                        packet.setAddress(this.ipEnviar);
+                        packet.setPort(this.port);
+                        this.dm.send(packet);
+                        index += 2;
+                    }
+
+                } catch (InterruptedException | IOException | ReceiveTimeOut ignored) {
+                }
+            }
+        }
+
+    }
 
     public void run() {
     }

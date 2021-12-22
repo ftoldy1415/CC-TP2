@@ -12,7 +12,25 @@ import java.util.Map;
 public class MainRececao {
 
     public static void main(String[] args) throws IOException {
+        try {
+            DatagramSocket s = new DatagramSocket(12346);
+            Demultiplexer d = new Demultiplexer(s,12346);
+            Ficheiro f      = new Ficheiro();
+            InetAddress ipEnvio = InetAddress.getByName(args[1]);
+            System.out.println(ipEnvio.toString());
+            System.out.println(args[0]);
+            Cliente c = new Cliente(ipEnvio,12345,d,s,args[0],f);
+            Metadados m = new Metadados();
+            List<DatagramPacket> original = m.serializeDataToPacket(args[0], "Guiao8");
+            c.comunInicial(original ,args[0]);
 
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+
+        /*
         InetAddress ipEnviar = InetAddress.getByName("localhost");
         int port = 57200;
 
@@ -26,6 +44,8 @@ public class MainRececao {
         //try {
             //Metadados m = new Metadados();
         c.comunInicial(new ArrayList<>(), "Guiao8");
+
+
             /*
 
             List<List<Map.Entry<String, FileTime>>> finalD = m.deserializePackets(original);
@@ -49,6 +69,7 @@ public class MainRececao {
       //  } catch (IOException e) {
       //      System.out.println("ERRO: " + e.getMessage());
       //  }
+
     }
 
 }
