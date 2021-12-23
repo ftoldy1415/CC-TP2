@@ -10,21 +10,29 @@ public class Logger {
     private File file;
     private List<Log> logs;
 
-    public void Logger (){
-        File file = new File("logs.txt");
-        List<Log> logs = new ArrayList<Log>();
+    public Logger (){
+        this.file = new File("logs.html");
+        this.logs = new ArrayList<Log>();
     }
 
     public void writeLog(Log newLog){
-        logs.add(newLog.clone());
+        this.logs.add(newLog.clone());
     }
 
     public void publishLogs() throws IOException {
         BufferedWriter writer;
         writer = new BufferedWriter(new FileWriter(this.file));
+        writer.append("<!DOCTYPE html>\n" +
+                "<html>\n" +
+                "<head>\n" +
+                "    <title>Example</title>\n" +
+                "</head>\n" +
+                "<body> \n");
         for(Log l : this.logs){
-            writer.append(l.toString() + "\n");
+            writer.append("<p>" + l.toString() + "</p>" + "\n");
         }
+        writer.append("</body>\n" +
+                "</html>\n");
         writer.close();
     }
 

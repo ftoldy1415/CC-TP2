@@ -129,11 +129,14 @@ public class Cliente implements Runnable{
                 logger.writeLog(new Log("Envio de pacote de confirmação", LocalDateTime.now()));
                 sendConfirmationPacket();
 
-
             } catch (IOException | ReceiveTimeOut | InterruptedException ioException) {
                 ioException.printStackTrace();
             }
-
+            try {
+                logger.publishLogs();
+            } catch (IOException ioException) {
+                ioException.printStackTrace();
+            }
             //o seu peer nao estava à escuta portanto este fica à espera de uma pedra -> que significa que está pronto
             //ao receber a pedra responde tambem com um pedra , fica assim estabelecida a primeira comunicação que indica que ambos estao prontos
             //em seguida o peer vai enviar os metadados do ficheiro que serão recebidos
