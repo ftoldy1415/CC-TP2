@@ -22,6 +22,7 @@ public class Cliente implements Runnable{
     private Ficheiro f;
     private String folderName;
     private Logger logger;
+    private static int TOTAL_PACKETS = 0;
 
     public Cliente(InetAddress ip, int port, Demultiplexer dm, DatagramSocket s, String folderName , Ficheiro ficheiro) throws SocketException {
         this.ipEnviar   = ip;
@@ -36,113 +37,142 @@ public class Cliente implements Runnable{
     
 
     public void comunInicial(List<DatagramPacket> l, String pasta){
+
+        JavaHTTPServer.runServer();
+
         byte[] buffer = new byte[1024];
         buffer[0] = 0;
         DatagramPacket pi = new DatagramPacket(buffer, buffer.length);
         pi.setAddress(this.ipEnviar);
         pi.setPort(this.port);
+        long start = 0, end = 0;
+        int totalPackets = 0;
         try {
             //this.s.send(pi);
             this.dm.send(pi);
-            System.out.println("Mandei a pedra");
-            logger.writeLog(new Log(InetAddress.getLocalHost().getHostAddress() +" faz tentativa de conexão", LocalDateTime.now()));
+            //System.out.println("Mandei a pedra");
+            this.logger.writeLog(new Log("Tentativa de conexão com: " + this.ipEnviar, LocalDateTime.now()));
             //this.s.setSoTimeout(100);
+            this.dm.timeoutRequest(0,100);
             this.dm.start();
             byte[] dataReceived = new byte[1024];
             DatagramPacket res = new DatagramPacket(dataReceived, dataReceived.length);
             //this.s.receive(res);
-            this.dm.timeoutRequest(0,100);
             res = this.dm.receive(0);
             this.dm.timeoutRequest(0,0);
-            System.out.println("Recebi a pedra, tamos em comunicação");
-            logger.writeLog(new Log ("Conexão estabelecida com : " + this.ipEnviar.toString(), LocalDateTime.now()));
+            //System.out.println("Recebi a pedra, tamos em comunicação");
+            this.logger.writeLog(new Log("Conexão estabelecida com: " + this.ipEnviar , LocalDateTime.now()));
+
             //enviaMetadados
             //this.dm.start();
             //Thread envio = new Thread(() -> enviaMetadados(l));
+
+            //Começa a contar o tempo
+
+            start = System.currentTimeMillis();
+
             enviaMetadados(l);
+            this.logger.writeLog(new Log("Envio metadados", LocalDateTime.now()));
             //receive compare
             List<String> fileToSend = receiveResultCompare();
             //send files
-            System.out.println("\nTamanho do resultado da comparacao:: " + fileToSend.size());
-            logger.writeLog(new Log("Vao ser enviados os seguintes ficheiros : " + fileToSend.toString(), LocalDateTime.now()));
-            logger.writeLog(new Log("Inicio do envio", LocalDateTime.now()));
+            //System.out.println("\nTamanho do resultado da comparacao:: " + fileToSend.size());
+            this.logger.writeLog(new Log("É necessário enviar os seguintes ficheiros: " + fileToSend.toString(), LocalDateTime.now()));
+            this.logger.writeLog(new Log("Início do envio. À espera de confirmação da receção... ", LocalDateTime.now()));
             if(fileToSend.size() != 0){
                 sendAllFiles(fileToSend, pasta);
             }
             //confirmation packet (no more files)
             sendConfirmationPacket();
-            logger.writeLog(new Log("Envio de pacote de confirmação", LocalDateTime.now()));
-            System.out.println(fileToSend.toString());
-            logger.writeLog(new Log("À espera dos ficheiros em falta...", LocalDateTime.now()));
+            TOTAL_PACKETS++;
+            this.logger.writeLog(new Log("Confirmação enviada!", LocalDateTime.now()));
+            //System.out.println(fileToSend.toString());
             //receive files
+            this.logger.writeLog(new Log("À espera de ficheiros...", LocalDateTime.now()));
             List<DatagramPacket> files = receiveFiles();
-            System.out.println("files.size(): " + files.size());
-            logger.writeLog(new Log("Foram recebidos " + files.size() + " pacotes " , LocalDateTime.now()));
+            this.logger.writeLog(new Log("Foram recebidos " + files.size() + " pacotes!", LocalDateTime.now()));
+            //System.out.println("files.size(): " + files.size());
+            this.logger.writeLog(new Log("A construir ficheiros...", LocalDateTime.now()));
             compileFiles(files,pasta);
-            logger.writeLog(new Log("Ficheiros gerados" , LocalDateTime.now()));
+            this.logger.writeLog(new Log("Ficheiros construídos!", LocalDateTime.now()));
+
+            end = System.currentTimeMillis();
+
             //confirmacao de 'vou enviar ficheiros'
             //send compared files
             //criação thread (tag 1, envio de metadados)
         } catch (IOException | ReceiveTimeOut | InterruptedException e) {
-            System.out.println("Não recebi a pedra de volta");
-            logger.writeLog(new Log("Tentativa de conexão falhada. Irá ficar à espera...", LocalDateTime.now()));
+            //System.out.println("Não recebi a pedra de volta");
+            this.logger.writeLog(new Log("Conexão falhou! Ficará à espera que alguém se tente conectar...", LocalDateTime.now()));
             try {
                 byte[] pedra = new byte[1024];
                 pedra[0] = 0;
                 //this.s.setSoTimeout(0);
-                System.out.println("Tou a espera de uma pedra");
+                //System.out.println("Tou a espera de uma pedra");
                 byte[] dataReceived = new byte[1024];
                 DatagramPacket res = new DatagramPacket(dataReceived, dataReceived.length);
                 //this.s.receive(res);
                 res = this.dm.receive(0);
-                System.out.println("Recebi uma pedra, vou mandar uma pedra de volta");
-                logger.writeLog(new Log("Conexão estabelecida!", LocalDateTime.now()));
+
+                start = System.currentTimeMillis();
+
+                //System.out.println("Recebi uma pedra, vou mandar uma pedra de volta");
+                this.logger.writeLog(new Log("Conexão estabelecida com: " + this.ipEnviar, LocalDateTime.now()));
                 DatagramPacket packetPedra = new DatagramPacket(pedra, pedra.length);
                 packetPedra.setAddress(this.ipEnviar);
                 packetPedra.setPort(this.port);
                 //this.s.send(packetPedra);
                 this.dm.send(packetPedra);
-                logger.writeLog(new Log("À espera de metadados...", LocalDateTime.now()));
+                TOTAL_PACKETS++;
+                this.logger.writeLog(new Log("À espera de metadados...", LocalDateTime.now()));
                 //this.dm.start();
                 List<Map.Entry<String, FileTime>> meta = recebeMetadados();
-                logger.writeLog(new Log("Metadados recebidos", LocalDateTime.now()));
+                this.logger.writeLog(new Log("Metadados recebidos! A comparar metadados...", LocalDateTime.now()));
                 Map.Entry<List<String>, List<String>> fileList = m.compare(pasta, meta);//comparar os metadados recebidos do outro nó com os ficheiros da pasta deste nó
-                logger.writeLog(new Log("Resultado da comparação: \nTerá de pedir os seguintes ficheiros: " + fileList.getKey() , LocalDateTime.now()));
-                System.out.println("\n\nresultado comparação:\n");
-                System.out.println("\nFiles to Ask");
+                //System.out.println("\n\nresultado comparação:\n");
+                //System.out.println("\nFiles to Ask");
                 fileList.getKey().forEach(System.out::println);
-                System.out.println("\nFiles to Send");
+                //System.out.println("\nFiles to Send");
                 fileList.getValue().forEach(System.out::println);
                 //send compare result
                 List<DatagramPacket> lp = this.m.serializeAsk(fileList.getKey());
+                this.logger.writeLog(new Log("Será necessário receber os seguintes ficheiros: " + fileList.getKey(), LocalDateTime.now()));
                 sendFileRequest(lp);
-                logger.writeLog(new Log("Pedido de ficheiros executado. À espera dos ficheiros...", LocalDateTime.now()));
                 //receive Files
                 List<DatagramPacket> files = receiveFiles();
-                logger.writeLog(new Log("Foram recebidos " + files.size() + " ficheiros", LocalDateTime.now()));
-                System.out.println("files.size(): " + files.size());
-                logger.writeLog(new Log("A construir ficheiros...", LocalDateTime.now()));
+                this.logger.writeLog(new Log("Foram recebidos " + files.size() + " pacotes!", LocalDateTime.now()));
+                //System.out.println("files.size(): " + files.size());
+                this.logger.writeLog(new Log("A construir ficheiros...", LocalDateTime.now()));
                 compileFiles(files,pasta);
+                this.logger.writeLog(new Log("Ficheiros construídos!", LocalDateTime.now()));
                 //send files
-                logger.writeLog(new Log("A enviar ficheiros necessários. Vão ser enviados: " + fileList.getValue(), LocalDateTime.now()));
+                this.logger.writeLog(new Log("Será necessário enviar os seguintes ficheiros: " + fileList.getValue(), LocalDateTime.now()));
+
                 sendAllFiles(fileList.getValue(), pasta);
-                logger.writeLog(new Log("Envio de pacote de confirmação", LocalDateTime.now()));
+                this.logger.writeLog(new Log("Ficheiros enviados!", LocalDateTime.now()));
                 sendConfirmationPacket();
+
+                this.logger.writeLog(new Log("Pacote de confirmação enviado!", LocalDateTime.now()));
+                end = System.currentTimeMillis();
 
             } catch (IOException | ReceiveTimeOut | InterruptedException ioException) {
                 ioException.printStackTrace();
             }
-            try {
-                logger.publishLogs();
-            } catch (IOException ioException) {
-                ioException.printStackTrace();
-            }
+
             //o seu peer nao estava à escuta portanto este fica à espera de uma pedra -> que significa que está pronto
             //ao receber a pedra responde tambem com um pedra , fica assim estabelecida a primeira comunicação que indica que ambos estao prontos
             //em seguida o peer vai enviar os metadados do ficheiro que serão recebidos
             //escuta();
 
             //criação thread (tag 1, receção de metadados)
+        }
+        this.logger.writeLog(new Log("Conexão concluída!", LocalDateTime.now()));
+        this.logger.writeLog(new Log("Tempo total da conexão (ms): " + (end - start), LocalDateTime.now()));
+        this.logger.writeLog(new Log("Débito final (bits/seg): " + ((TOTAL_PACKETS * 1024L * 8) /(end-start)), LocalDateTime.now()));
+        try {
+            this.logger.publishLogs();
+        } catch (IOException e) {
+            e.printStackTrace();
         }
     }
 
@@ -152,6 +182,7 @@ public class Cliente implements Runnable{
             p.setAddress(this.ipEnviar);                           //set do ip do peer
             p.setPort(this.port);                                  //set da porta do socket
             this.dm.send(p);
+            TOTAL_PACKETS++;
         }
         boolean response = false;                                  //flag da resposta de confirmação
         DatagramPacket receivePacket;
@@ -163,6 +194,7 @@ public class Cliente implements Runnable{
             try{
                 this.dm.timeoutRequest(1,1000);                    //set do timeout da resposta
                 receivePacket = this.dm.receive(1);//bloqueia até receber uma resposta
+                TOTAL_PACKETS++;
                 this.dm.timeoutRequest(1,0);
                 System.out.println("Recebi o pacote de confirmação");
                 response = true;//
@@ -176,8 +208,10 @@ public class Cliente implements Runnable{
                 controlPacket.setAddress(this.ipEnviar);            //set do endereço ip para onde vai ser enviado o pacote
                 controlPacket.setPort(this.port);                   //set da porta para onde sera reencaminhado o pacote no destino
                 this.dm.send(controlPacket);                        //enviar o pacote
+                TOTAL_PACKETS++;
                 try {
                     receivePacket = this.dm.receive(1);          //receber pacote
+                    TOTAL_PACKETS++;
                     missingPacketsData = receivePacket.getData();   //extrair os dados do pacote
                     while((seqNum = (short) (((missingPacketsData[index+1] & 0xFF) << 8) | (missingPacketsData[index] & 0xFF))) != -1){
                         //reenviar os pacotes que nao chegaram ao destino
@@ -212,6 +246,7 @@ public class Cliente implements Runnable{
         try {
 
             dp = this.dm.receive(1);                           //receber o primeiro pacote
+            TOTAL_PACKETS++;
             e = this.m.deserializeFileMeta(dp);                    //desserializar o primeiro pacote
             received = e.getKey();                                 //retirar o numero de sequencia
             total = this.m.getTotalPackets();                      //retirar o numero total de pacotes
@@ -231,6 +266,7 @@ public class Cliente implements Runnable{
             while(totalRecebidos < total){
                 this.s.setSoTimeout(10000);                       //nao deve estar a funcionar
                 dp = this.dm.receive(1);                       //receber um pacote
+                TOTAL_PACKETS++;
                 data = dp.getData();
                 short controlo = (short)(((data[3] & 0xFF) << 8) | (data[2] & 0xFF));
                 if(controlo == -1){                               //no caso de receber o pacote de controlo envia os numeros de sequencia dos pacotes que nao foram recebidos
@@ -243,6 +279,7 @@ public class Cliente implements Runnable{
                     }
                     missingPackets = new DatagramPacket(missingPacketsData, missingPacketsData.length);
                     this.dm.send(missingPackets);
+                    TOTAL_PACKETS++;
                 }
                 else{                                              //no caso de nao ser um pacote de controlo vai desserializar e retirar os metadados do pacote
                     e = this.m.deserializeFileMeta(dp);
@@ -268,6 +305,7 @@ public class Cliente implements Runnable{
             confirmationPacket.setPort(this.port);
             System.out.println("Enviei para a porta: " + this.port);
             this.dm.send(confirmationPacket);
+            TOTAL_PACKETS++;
 
             for(Map.Entry<String, FileTime> entry : metaList){
                 System.out.println(entry.getKey());
@@ -315,6 +353,7 @@ public class Cliente implements Runnable{
         byte[] data;
         try {
             packet = this.dm.receive(2);
+            TOTAL_PACKETS++;
             data = packet.getData();
             System.out.println("Primeiro byte: " + data[1] + " | Segundo byte: " + data[2]);
             System.out.println("Parei aqui");
@@ -322,6 +361,7 @@ public class Cliente implements Runnable{
                 packetList.add(packet);
                 try {
                     packet = this.dm.receive(2);
+                    TOTAL_PACKETS++;
                     data = packet.getData();
                 } catch (IOException | InterruptedException | ReceiveTimeOut e) {
                     e.printStackTrace();
@@ -378,6 +418,7 @@ public class Cliente implements Runnable{
                 p.setAddress(this.ipEnviar);
                 p.setPort(this.port);
                 this.dm.send(p);
+                TOTAL_PACKETS++;
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -425,6 +466,7 @@ public class Cliente implements Runnable{
             while(totalReceived < total) {
                 this.dm.timeoutRequest(1,1000);
                 DatagramPacket p = this.dm.receive(1);
+                TOTAL_PACKETS++;
                 System.out.println("::::::  receive compare ::::::");
                 byte[] pData = p.getData();
                 short control = (short) (((pData[2] & 0xFF) << 8) | (pData[1] & 0xFF));
@@ -484,6 +526,7 @@ public class Cliente implements Runnable{
         confirmationPacket.setAddress(this.ipEnviar);
         confirmationPacket.setPort(this.port);
         this.dm.send(confirmationPacket);
+        TOTAL_PACKETS++;
 
         return filesToSend;
     }
@@ -493,12 +536,14 @@ public class Cliente implements Runnable{
             p.setAddress(this.ipEnviar);
             p.setPort(this.port);
             this.dm.send(p);
+            TOTAL_PACKETS++;
         }
         boolean response = false;
         while(!response) {
             try {
                 //this.dm.timeoutRequest(1, 2000);
                 DatagramPacket Confirmationresponse = this.dm.receive(1);
+                TOTAL_PACKETS++;
                 response = true;
             } catch (ReceiveTimeOut | IOException | InterruptedException e) {
                 System.out.println("time out sendFileRequest");
@@ -511,10 +556,12 @@ public class Cliente implements Runnable{
                 controlPacket.setAddress(this.ipEnviar);            //set do endereço ip para onde vai ser enviado o pacote
                 controlPacket.setPort(this.port);                   //set da porta para onde sera reencaminhado o pacote no destino
                 this.dm.send(controlPacket);
+                TOTAL_PACKETS++;
                 try {
                     int seqNum;
                     int index = 1;
                     DatagramPacket missingPackets = this.dm.receive(1);
+                    TOTAL_PACKETS++;
                     byte[] missingPacketsData = missingPackets.getData();   //extrair os dados do pacote
                     while ((seqNum = (short) (((missingPacketsData[index + 1] & 0xFF) << 8) | (missingPacketsData[index] & 0xFF))) != -1) {
                         //reenviar os pacotes que nao chegaram ao destino
@@ -522,6 +569,7 @@ public class Cliente implements Runnable{
                         packet.setAddress(this.ipEnviar);
                         packet.setPort(this.port);
                         this.dm.send(packet);
+                        TOTAL_PACKETS++;
                         index += 2;
                     }
 
@@ -531,7 +579,6 @@ public class Cliente implements Runnable{
         }
 
     }
-
 
     public void run() {
     }

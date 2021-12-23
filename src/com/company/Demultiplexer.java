@@ -18,7 +18,7 @@ public class Demultiplexer implements AutoCloseable{
     private Map<Integer,Boolean> exceptions;
     private int timeout;
     private int port;
-    private InetAddress ip;
+    private InetAddress ipEnviar;
 
     public Demultiplexer(DatagramSocket s, int port, InetAddress ipEnviar){
         this.l     = new ReentrantLock();
@@ -28,70 +28,71 @@ public class Demultiplexer implements AutoCloseable{
         this.timeoutRequests = new HashMap<>();
         this.exceptions = new HashMap<>();
         this.port = port;
-        this.ip   = ipEnviar;
+        this.ipEnviar = ipEnviar;
     }
 
     public void start(){
         Thread[] threads = {
 
                 new Thread(() -> {
-                    byte[] packetData;
+                   byte[] packetData;
 
-                    while(true){
-                        packetData = new byte[1024];
-                        DatagramPacket packet = new DatagramPacket(packetData, packetData.length);
+                   while(true){
+                       packetData = new byte[1024];
+                       DatagramPacket packet = new DatagramPacket(packetData, packetData.length);
 
-                        try{
-                            s.setSoTimeout(checkTimeout());
-                            s.receive(packet);
-                            if(this.ip.equals(packet.getAddress())){
-                                int tag;
-                                tag = packetData[0];
-                                if(tag != -1 ) {
-                                    this.l.lock();
-                                    if (!this.conds.containsKey(tag)) {
-                                        this.conds.put(tag, this.l.newCondition());
-                                        this.data.put(tag, new ArrayDeque<>());
-                                        this.exceptions.put(tag, false);
-                                        this.timeoutRequests.put(tag, false);
-                                    }
-                                    Condition c = this.conds.get(tag);
-                                    Deque<DatagramPacket> deque = this.data.get(tag);
-                                    deque.add(packet);
-                                    this.data.put(tag, deque);
-                                    c.signal();
+                       try{
+                           s.setSoTimeout(checkTimeout());
+                           s.receive(packet);
 
-                                    this.l.unlock();
+                           int tag;
+                           tag = packetData[0];
+                           if(this.ipEnviar.equals(packet.getAddress())){
+                               if(tag != -1 ) {
+                                   this.l.lock();
+                                   if (!this.conds.containsKey(tag)) {
+                                       this.conds.put(tag, this.l.newCondition());
+                                       this.data.put(tag, new ArrayDeque<>());
+                                       this.exceptions.put(tag, false);
+                                       this.timeoutRequests.put(tag, false);
+                                   }
+                                   Condition c = this.conds.get(tag);
+                                   Deque<DatagramPacket> deque = this.data.get(tag);
+                                   deque.add(packet);
+                                   this.data.put(tag, deque);
+                                   c.signal();
 
-                                }
-                            }
-                        }catch(SocketTimeoutException e){
-                            this.l.lock();
-                            Iterator<Map.Entry<Integer,Boolean>> it = this.timeoutRequests.entrySet().iterator();
-                            int tag = -1;
-                            while(it.hasNext() && tag == -1){
-                                Map.Entry<Integer,Boolean> entry = it.next();
-                                if(entry.getValue()) tag = entry.getKey();
-                            }
-                            this.timeoutRequests.put(tag,false);
-                            this.exceptions.put(tag,true);
-                            Condition c = this.conds.get(tag);
-                            c.signal();
-                            this.l.unlock();
-                            try {
-                                this.s.setSoTimeout(0);
-                                this.timeout = 0;
-                            } catch (SocketException socketException) {
-                                socketException.printStackTrace();
-                            }
+                                   this.l.unlock();
+                               }
+                           }
+
+                       }catch(SocketTimeoutException e){
+                           this.l.lock();
+                           Iterator<Map.Entry<Integer,Boolean>> it = this.timeoutRequests.entrySet().iterator();
+                           int tag = -1;
+                           while(it.hasNext() && tag == -1){
+                               Map.Entry<Integer,Boolean> entry = it.next();
+                               if(entry.getValue()) tag = entry.getKey();
+                           }
+                           this.timeoutRequests.put(tag,false);
+                           this.exceptions.put(tag,true);
+                           Condition c = this.conds.get(tag);
+                           c.signal();
+                           this.l.unlock();
+                           try {
+                               this.s.setSoTimeout(0);
+                               this.timeout = 0;
+                           } catch (SocketException socketException) {
+                               socketException.printStackTrace();
+                           }
 
 
-                            System.out.println("exceção tag " + tag + " : " +e.getMessage());
-                        }catch(IOException e){
+                           System.out.println("exceção tag " + tag + " : " +e.getMessage());
+                       }catch(IOException e){
 
-                        }
+                       }
 
-                    }
+                   }
 
                 })
         };
@@ -154,9 +155,9 @@ public class Demultiplexer implements AutoCloseable{
                 DatagramPacket ctrlP = new DatagramPacket(ctrl,ctrl.length, InetAddress.getByName("localhost"),this.port);
                 this.s.send(ctrlP);
             } catch (IOException e) {
-                e.printStackTrace();
-            }
-            this.l.unlock();
+            e.printStackTrace();
+        }
+        this.l.unlock();
         }catch (SocketException e) {
             e.printStackTrace();
         }
@@ -164,14 +165,14 @@ public class Demultiplexer implements AutoCloseable{
 
     public int checkTimeout(){
         this.l.lock();
-        Iterator<Map.Entry<Integer,Boolean>> it = this.timeoutRequests.entrySet().iterator();
-        int timeout = 0;
-        while(it.hasNext() && timeout == 0){
-            Map.Entry<Integer,Boolean> e = it.next();
-            if(e.getValue()) timeout = this.timeout;
-        }
-        this.l.unlock();
-        return timeout;
+       Iterator<Map.Entry<Integer,Boolean>> it = this.timeoutRequests.entrySet().iterator();
+       int timeout = 0;
+       while(it.hasNext() && timeout == 0){
+           Map.Entry<Integer,Boolean> e = it.next();
+           if(e.getValue()) timeout = this.timeout;
+       }
+       this.l.unlock();
+       return timeout;
     }
 
     public void close(){

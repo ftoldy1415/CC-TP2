@@ -19,8 +19,8 @@ import java.util.StringTokenizer;
 // Each Client Connection will be managed in a dedicated Thread
 public class JavaHTTPServer implements Runnable{
 
-    static final File WEB_ROOT = new File("C:\\Users\\João Delgado\\OneDrive\\Ambiente de Trabalho\\Me\\Uni\\3º Ano\\TPs\\CC\\CC-TP2\\src");
-    static final String DEFAULT_FILE = "example.html";
+    static final File WEB_ROOT = new File(System.getProperty("user.dir"));
+    static final String DEFAULT_FILE = "logs.html";
     static final String FILE_NOT_FOUND = "404.html";
     static final String METHOD_NOT_SUPPORTED = "not_supported.html";
     // port to listen connection
@@ -36,28 +36,34 @@ public class JavaHTTPServer implements Runnable{
         connect = c;
     }
 
-    public static void main(String[] args) {
-        try {
-            ServerSocket serverConnect = new ServerSocket(PORT);
-            System.out.println("Server started.\nListening for connections on port : " + PORT + " ...\n");
+    public static void runServer() {
+        Thread runThread = new Thread(() -> {
+            try {
+                ServerSocket serverConnect = new ServerSocket(PORT);
+                System.out.println("Server started.\nListening for connections on port : " + PORT + " ...\n");
 
-            // we listen until user halts server execution
-            while (true) {
-                JavaHTTPServer myServer = new JavaHTTPServer(serverConnect.accept());
+                // we listen until user halts server execution
+                while (true) {
+                    JavaHTTPServer myServer = new JavaHTTPServer(serverConnect.accept());
 
-                if (verbose) {
-                    System.out.println("Connecton opened. (" + new Date() + ")");
+                    if (verbose) {
+                        System.out.println("Connecton opened. (" + new Date() + ")");
+                    }
+
+                    // create dedicated thread to manage the client connection
+                    Thread thread = new Thread(myServer);
+                    thread.start();
                 }
 
-                // create dedicated thread to manage the client connection
-                Thread thread = new Thread(myServer);
-                thread.start();
+            } catch (IOException e) {
+                System.err.println("Server Connection error : " + e.getMessage());
             }
+        });
 
-        } catch (IOException e) {
-            System.err.println("Server Connection error : " + e.getMessage());
-        }
+        runThread.start();
+
     }
+
 
     @Override
     public void run() {

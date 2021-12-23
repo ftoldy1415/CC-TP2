@@ -12,11 +12,13 @@ public class Logger {
 
     public Logger (){
         this.file = new File("logs.html");
-        this.logs = new ArrayList<Log>();
+        this.logs = new ArrayList<>();
     }
 
     public void writeLog(Log newLog){
+        System.out.println(newLog);
         this.logs.add(newLog.clone());
+
     }
 
     public void publishLogs() throws IOException {
@@ -29,7 +31,7 @@ public class Logger {
                 "</head>\n" +
                 "<body> \n");
         for(Log l : this.logs){
-            writer.append("<p>" + l.toString() + "</p>" + "\n");
+            writer.append("<p>" + l.toString() + "</p>" +"\n");
         }
         writer.append("</body>\n" +
                 "</html>\n");

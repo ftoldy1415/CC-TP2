@@ -3,6 +3,9 @@ package com.company;
 import java.io.*;
 import java.net.DatagramPacket;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -215,8 +218,17 @@ public class Ficheiro {
         }
     }
 
-    public void sendFiles(List<String> files, String folder){
-
+    public long totalSize(List<String> fileList){
+        long total = 0;
+        for(String filename : fileList){
+            try{
+                Path path = Paths.get(filename);
+                total += Files.size(path);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        return total;
     }
 
 }

@@ -16,7 +16,7 @@ public class MainFinal {
             InetAddress ipEnvio = InetAddress.getByName(args[1]);
             System.out.println(ipEnvio.toString());
             System.out.println(args[0]);
-            Cliente c = new Cliente(ipEnvio,12346,d,s,args[0],f);
+            Cliente c = new Cliente(ipEnvio,12345,d,s,args[0],f);
             Metadados m = new Metadados();
             List<DatagramPacket> original = m.serializeDataToPacket(args[0]);
             c.comunInicial(original, args[0]);
