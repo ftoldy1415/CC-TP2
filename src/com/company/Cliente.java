@@ -21,6 +21,7 @@ public class Cliente implements Runnable{
     private Metadados m;
     private Ficheiro f;
     private String folderName;
+    private Logger logger;
 
     public Cliente(InetAddress ip, int port, Demultiplexer dm, DatagramSocket s, String folderName , Ficheiro ficheiro) throws SocketException {
         this.ipEnviar   = ip;
@@ -30,6 +31,7 @@ public class Cliente implements Runnable{
         this.m          = new Metadados();
         this.folderName = folderName;
         this.f          = ficheiro;
+        this.logger     = new Logger();
     }
     
 
@@ -43,6 +45,7 @@ public class Cliente implements Runnable{
             //this.s.send(pi);
             this.dm.send(pi);
             System.out.println("Mandei a pedra");
+            logger.writeLog(new Log(InetAddress.getLocalHost().getHostAddress() +" faz tentativa de conexão", LocalDateTime.now()));
             //this.s.setSoTimeout(100);
             this.dm.start();
             byte[] dataReceived = new byte[1024];
@@ -52,6 +55,7 @@ public class Cliente implements Runnable{
             res = this.dm.receive(0);
             this.dm.timeoutRequest(0,0);
             System.out.println("Recebi a pedra, tamos em comunicação");
+            logger.writeLog(new Log ("Conexão estabelecida com : " + this.ipEnviar.toString(), LocalDateTime.now()));
             //enviaMetadados
             //this.dm.start();
             //Thread envio = new Thread(() -> enviaMetadados(l));
@@ -60,23 +64,28 @@ public class Cliente implements Runnable{
             List<String> fileToSend = receiveResultCompare();
             //send files
             System.out.println("\nTamanho do resultado da comparacao:: " + fileToSend.size());
+            logger.writeLog(new Log("Vao ser enviados os seguintes ficheiros : " + fileToSend.toString(), LocalDateTime.now()));
+            logger.writeLog(new Log("Inicio do envio", LocalDateTime.now()));
             if(fileToSend.size() != 0){
                 sendAllFiles(fileToSend, pasta);
             }
             //confirmation packet (no more files)
             sendConfirmationPacket();
+            logger.writeLog(new Log("Envio de pacote de confirmação", LocalDateTime.now()));
             System.out.println(fileToSend.toString());
+            logger.writeLog(new Log("À espera dos ficheiros em falta...", LocalDateTime.now()));
             //receive files
             List<DatagramPacket> files = receiveFiles();
             System.out.println("files.size(): " + files.size());
+            logger.writeLog(new Log("Foram recebidos " + files.size() + " pacotes " , LocalDateTime.now()));
             compileFiles(files,pasta);
-
-
+            logger.writeLog(new Log("Ficheiros gerados" , LocalDateTime.now()));
             //confirmacao de 'vou enviar ficheiros'
             //send compared files
             //criação thread (tag 1, envio de metadados)
         } catch (IOException | ReceiveTimeOut | InterruptedException e) {
             System.out.println("Não recebi a pedra de volta");
+            logger.writeLog(new Log("Tentativa de conexão falhada. Irá ficar à espera...", LocalDateTime.now()));
             try {
                 byte[] pedra = new byte[1024];
                 pedra[0] = 0;
@@ -87,14 +96,18 @@ public class Cliente implements Runnable{
                 //this.s.receive(res);
                 res = this.dm.receive(0);
                 System.out.println("Recebi uma pedra, vou mandar uma pedra de volta");
+                logger.writeLog(new Log("Conexão estabelecida!", LocalDateTime.now()));
                 DatagramPacket packetPedra = new DatagramPacket(pedra, pedra.length);
                 packetPedra.setAddress(this.ipEnviar);
                 packetPedra.setPort(this.port);
                 //this.s.send(packetPedra);
                 this.dm.send(packetPedra);
+                logger.writeLog(new Log("À espera de metadados...", LocalDateTime.now()));
                 //this.dm.start();
                 List<Map.Entry<String, FileTime>> meta = recebeMetadados();
+                logger.writeLog(new Log("Metadados recebidos", LocalDateTime.now()));
                 Map.Entry<List<String>, List<String>> fileList = m.compare(pasta, meta);//comparar os metadados recebidos do outro nó com os ficheiros da pasta deste nó
+                logger.writeLog(new Log("Resultado da comparação: \nTerá de pedir os seguintes ficheiros: " + fileList.getKey() , LocalDateTime.now()));
                 System.out.println("\n\nresultado comparação:\n");
                 System.out.println("\nFiles to Ask");
                 fileList.getKey().forEach(System.out::println);
@@ -103,12 +116,17 @@ public class Cliente implements Runnable{
                 //send compare result
                 List<DatagramPacket> lp = this.m.serializeAsk(fileList.getKey());
                 sendFileRequest(lp);
+                logger.writeLog(new Log("Pedido de ficheiros executado. À espera dos ficheiros...", LocalDateTime.now()));
                 //receive Files
                 List<DatagramPacket> files = receiveFiles();
+                logger.writeLog(new Log("Foram recebidos " + files.size() + " ficheiros", LocalDateTime.now()));
                 System.out.println("files.size(): " + files.size());
+                logger.writeLog(new Log("A construir ficheiros...", LocalDateTime.now()));
                 compileFiles(files,pasta);
                 //send files
+                logger.writeLog(new Log("A enviar ficheiros necessários. Vão ser enviados: " + fileList.getValue(), LocalDateTime.now()));
                 sendAllFiles(fileList.getValue(), pasta);
+                logger.writeLog(new Log("Envio de pacote de confirmação", LocalDateTime.now()));
                 sendConfirmationPacket();
 
 
