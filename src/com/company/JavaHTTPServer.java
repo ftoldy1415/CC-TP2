@@ -14,9 +14,6 @@ import java.net.Socket;
 import java.util.Date;
 import java.util.StringTokenizer;
 
-// The tutorial can be found just here on the SSaurel's Blog :
-// https://www.ssaurel.com/blog/create-a-simple-http-web-server-in-java
-// Each Client Connection will be managed in a dedicated Thread
 public class JavaHTTPServer implements Runnable{
 
     static final File WEB_ROOT = new File(System.getProperty("user.dir"));
@@ -105,7 +102,6 @@ public class JavaHTTPServer implements Runnable{
 
                 // we send HTTP Headers with data to client
                 out.println("HTTP/1.1 501 Not Implemented");
-                out.println("Server: Java HTTP Server from SSaurel : 1.0");
                 out.println("Date: " + new Date());
                 out.println("Content-type: " + contentMimeType);
                 out.println("Content-length: " + fileLength);
@@ -132,7 +128,6 @@ public class JavaHTTPServer implements Runnable{
 
                     // send HTTP Headers
                     out.println("HTTP/1.1 200 OK");
-                    out.println("Server: Java HTTP Server from SSaurel : 1.0");
                     out.println("Date: " + new Date());
                     out.println("Content-type: " + content);
                     out.println("Content-length: " + fileLength);
@@ -155,7 +150,6 @@ public class JavaHTTPServer implements Runnable{
             } catch (IOException ioe) {
                 System.err.println("Error with file not found exception : " + ioe.getMessage());
             }
-
         } catch (IOException ioe) {
             System.err.println("Server error : " + ioe);
         } finally {
@@ -206,11 +200,10 @@ public class JavaHTTPServer implements Runnable{
         byte[] fileData = readFileData(file, fileLength);
 
         out.println("HTTP/1.1 404 File Not Found");
-        out.println("Server: Java HTTP Server from SSaurel : 1.0");
         out.println("Date: " + new Date());
         out.println("Content-type: " + content);
         out.println("Content-length: " + fileLength);
-        out.println(); // blank line between headers and content, very important !
+        out.println(); // blank line between headers and content
         out.flush(); // flush character output stream buffer
 
         dataOut.write(fileData, 0, fileLength);

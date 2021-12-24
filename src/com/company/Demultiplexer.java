@@ -3,7 +3,6 @@ package com.company;
 import java.io.IOException;
 import java.net.*;
 import java.util.*;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -19,9 +18,18 @@ public class Demultiplexer implements AutoCloseable{
     private int timeout;
     private int port;
     private InetAddress ipEnviar;
+    private Lock send;
+
+    /**
+     * Construtor do demultiplexer
+     * @param s Socket de onde vai ler
+     * @param port porta para onde vai enviar pacotes
+     * @param ipEnviar ip para onde vai enviar pacotes
+     */
 
     public Demultiplexer(DatagramSocket s, int port, InetAddress ipEnviar){
         this.l     = new ReentrantLock();
+        this.send = new ReentrantLock();
         this.s     = s;
         this.conds = new HashMap<>();
         this.data  = new HashMap<>();
@@ -31,12 +39,18 @@ public class Demultiplexer implements AutoCloseable{
         this.ipEnviar = ipEnviar;
     }
 
+    /**
+     * Método que cria uma thread vai lendo do socket mensagens e colocando numa
+     * estrutura de dados que é um Map<Integer, Deque<DatagramPacket>>. Esta Deque
+     * terá seguirá uma ordem FIFO.
+     */
+
     public void start(){
         Thread[] threads = {
 
                 new Thread(() -> {
                    byte[] packetData;
-
+                    int counter = 0;
                    while(true){
                        packetData = new byte[1024];
                        DatagramPacket packet = new DatagramPacket(packetData, packetData.length);
@@ -99,13 +113,29 @@ public class Demultiplexer implements AutoCloseable{
         threads[0].start();
     }
 
+    /**
+     * Método que escreve diretamente no socket
+     * @param dp Packet a ser escrito no socket
+     */
+
     public void send(DatagramPacket dp){
+        this.send.lock();
         try {
             s.send(dp);
         } catch (IOException e) {
             e.printStackTrace();
         }
+        this.send.unlock();
     }
+
+    /**
+     * Método que tira da estrutura de dados partilhada o pacote mais antigo da deque
+     * @param tag especifica a tag
+     * @return packet Pacote lido da estrutura de dados
+     * @throws IOException
+     * @throws InterruptedException
+     * @throws ReceiveTimeOut
+     */
 
     public DatagramPacket receive(int tag) throws IOException, InterruptedException, ReceiveTimeOut{
         // verificar se existe algum tipo de dados associado à tag i
@@ -137,6 +167,14 @@ public class Demultiplexer implements AutoCloseable{
         return packet;
     }
 
+    /**
+     * Método utilizado para pedir um timeout
+     * ao pedir um timeout é atualizado o map de timeourequests associando à tag que pediu o timeout um valor booleano com o valor true
+     * é ainda enviado um datagrampacket para o socket que está a receber pacotes para desbloquear o receive e fazer set do timeout, esse pacote é ignorado
+     * @param tag
+     * @param timeOutTime
+     */
+
     public void timeoutRequest(int tag, int timeOutTime){
         try {
             this.l.lock();
@@ -163,6 +201,13 @@ public class Demultiplexer implements AutoCloseable{
         }
     }
 
+    /**
+     * Metodo que verifica se foi pedido um timeout
+     * Para isso é usado um map com associações de tag para um booleano, se for encontrado um booleano a true significa que foi pedido um timeout
+     * o valor do timeout fica sempre armazenado na variavel timeout.
+     * @return
+     */
+
     public int checkTimeout(){
         this.l.lock();
        Iterator<Map.Entry<Integer,Boolean>> it = this.timeoutRequests.entrySet().iterator();
@@ -174,6 +219,10 @@ public class Demultiplexer implements AutoCloseable{
        this.l.unlock();
        return timeout;
     }
+
+    /**
+     * Método que implementa o fecho do socket
+     */
 
     public void close(){
         this.s.close();

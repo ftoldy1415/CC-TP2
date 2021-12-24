@@ -4,7 +4,6 @@ import java.io.File;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
@@ -28,6 +27,17 @@ public class Metadados {
     }
 
 
+    /**
+     * Método de serialização dos pacotes com os ficheiros a pedir.
+     * Começa por fazer uma verificação do tamanho total dos nomes de todos os ficheiros que se pretende requisitar.
+     * Calcula-se o nº total de pacotes (dividindo o tamanho total dos nomes pelo espaço disponível em cada pacote para armazenamento dos mesmos),
+     * É inicializado um array de bytes com tamanho 1024 e é iniciado um ciclo que percorre todos as strings na lista l (lista de nomes dos ficheiros a pedir).
+     * Nesse ciclo, é feito sucessivamente a inserção do tamanho do nome (no formato short) seguido do nome do ficheiro, incrementando o indice adequadamente.
+     * Quando dito indice atingir um valor não inferior a mss-6, é chamado o método fechaPacote e adicionado à lista o pacote recém criado.
+     * É ainda inicializado um novo array para as iterações seguintes.
+     * @param l
+     * @return
+     */
     public List<DatagramPacket> serializeAsk(List<String> l){
         List<DatagramPacket> finalList = new ArrayList<>();
         int sizetotal = 0;
@@ -72,7 +82,14 @@ public class Metadados {
         return finalList;
     }
 
-
+    /**
+     * Método de deserialização dos pacotes de pedido de ficheiros.
+     * O método recebe uma lista de DatagramPackets que irá deserializar num ciclo for.
+     * Cada iteração desse ciclo irá iniciar um ciclo while com o propósito de ler cada nome de ficheiro para adicionar a uma List<String>
+     * Cada ciclo while será terminado quando o indice de leitura se encontrar nos bytes de terminação do pacote
+     * @param filesToAskPacket
+     * @return
+     */
     public List<String> deserializeAsk(List<DatagramPacket> filesToAskPacket){
         List<String> filesList = new ArrayList<>();
         byte[] data, nameBytes;
@@ -114,7 +131,6 @@ public class Metadados {
         ByteBuffer buffer = ByteBuffer.allocate(Long.BYTES);
         buffer.putLong(lastmodified);
         byte[] longBuffer = buffer.array();
-        System.out.println();
         System.arraycopy(longBuffer,0,b,nome.length+2,8);
         return b;
     }
@@ -129,10 +145,7 @@ public class Metadados {
     public Map.Entry<Integer, Map.Entry<String, FileTime>> deserializeMetadadosFicheiro(byte[] b, int index){
 
         short name_size = (short)(((b[index+1] & 0xFF) << 8) | (b[index] & 0xFF));
-        System.out.println(b[index+1]);
-        System.out.println(b[index]);
         byte[] nomeFile = new byte[name_size];
-        System.out.println(name_size);
         System.arraycopy(b,index+2,nomeFile,0,name_size);
         String name = new String(nomeFile);
         ByteBuffer buffer = ByteBuffer.allocate(Long.BYTES);
@@ -237,23 +250,16 @@ public class Metadados {
             if (serializado.length < metaSize-size_final){
                 System.arraycopy(serializado, 0, packetBuffer, size_final, serializado.length);
 
-                System.out.println("FICHEIRO : " + x + " Serialized size " + serializado.length);
                 size_final += serializado.length;
             }
             else {                                  //flag final de pacote
-                System.out.println("Final de Pacote");
                 packetBufferData = fechaPacote(packetBuffer, size_final, seq_number++);
                 provisional.add(new AbstractMap.SimpleEntry<>(size_final+4, packetBufferData));
-                System.out.println("TAMANHO DO " + seq_number + "º PACOTE" + size_final);
                 size_final = 1; // quando pacote fecha, temos que voltar ao inicio do proximo pacote.
 
             }
         }
 
-       //DatagramPacket pastaPacket = serializePastaData(path, pasta, (short) (seq_number+1)); //serializa o nome da pasta
-        //resultSerialized.add(pastaPacket);
-
-        System.out.println("Final de Pacote");
         packetBufferData = fechaPacote(packetBuffer, size_final, seq_number);
         provisional.add(new AbstractMap.SimpleEntry<>(size_final+4, packetBufferData));
 
@@ -261,7 +267,6 @@ public class Metadados {
             DatagramPacket packetToAdd = criaPacote(e, seq_number+1);    //seq number vai ser o neste momento o número total de pacotes a enviar. Este nº vai ser colocado em todos os pacotes
             resultSerialized.add(packetToAdd);
         }
-        System.out.println("Nº de pacotes" + resultSerialized.size());
         return resultSerialized;
     }
 
@@ -274,18 +279,7 @@ public class Metadados {
 
     public Map.Entry<Integer, List<Map.Entry<String, FileTime>>> deserializeFileMeta(DatagramPacket dados) {
 
-        //Map<String, FileTime> finalMap = new HashMap<>();
         byte[] dadosBytes = dados.getData();
-
-        /*
-        short folder_size = (short) (((dadosBytes[0] & 0xFF) << 8) | (dadosBytes[1] & 0xFF));
-        byte[] nomePasta = new byte[folder_size];
-        System.arraycopy(dadosBytes, 2, nomePasta, 0, folder_size);
-        String name = new String(nomePasta);
-        finalMap.put(name, null);
-
-
-         */
 
         short seq_number, total;
         List<Map.Entry<String, FileTime>> listaMeta = null;
@@ -297,45 +291,36 @@ public class Metadados {
         int i = 0;
         listaMeta = new ArrayList<>();
         while (index < dadosBytes.length) {
-            System.out.println("PASSAGEM Nº -> " + i);
-            System.out.println("Index: " + index);
-            System.out.println("Dados Bytes" + dadosBytes.length);
             i++;
-            System.out.println("Primeiro byte: " + dadosBytes[index] + " | Segundo Byte: " + dadosBytes[index+1]);
             if(dadosBytes[index] == 0 && dadosBytes[index+1] == 0) {
                 index += 2;
-                System.out.println("Acabou o pacote");
                 seq_number = (short) (((dadosBytes[index+1] & 0xFF) << 8) | (dadosBytes[index] & 0xFF));
                 index += 2;
-                System.out.println("Nº seq :" + seq_number);
-                System.out.println(listaMeta);
                 this.totalPackets = (short) (((dadosBytes[index+1] & 0xFF) << 8) | (dadosBytes[index] & 0xFF));
-                System.out.println("TOTAL PACOTES: " + this.totalPackets);
                 return new AbstractMap.SimpleEntry<>((int) seq_number, listaMeta);
             }
             else{
                 Map.Entry<Integer, Map.Entry<String, FileTime>> ret = deserializeMetadadosFicheiro(dadosBytes, index);
-                System.out.println("FILE TIME " + ret.getValue().getValue());
                 file_time = ret.getValue().getValue();
                 if(file_time.compareTo(compare) == 0){
-                    System.out.println("Deserialize Pasta");
                     listaMeta.add(new AbstractMap.SimpleEntry<>(ret.getValue().getKey(), ret.getValue().getValue()));
-                    System.out.println(listaMeta);
                     this.totalPackets = (short) (((dadosBytes[ret.getKey()+1] & 0xFF) << 8) | (dadosBytes[ret.getKey()] & 0xFF));
                     return new AbstractMap.SimpleEntry<>(0, listaMeta);
                 }
                 else{
-                    System.out.println("Deserialize Meta");
                     listaMeta.add(new AbstractMap.SimpleEntry<>(ret.getValue().getKey(), ret.getValue().getValue()));
-                    System.out.println(listaMeta);
                 }
                 index = ret.getKey();
-                System.out.println("DEPOIS DA PASSAGEM " + index);
             }
         }
         return null;
     }
 
+    /**
+     * Método que desserializa uma lista de DatagramPackets
+     * @param lp Lista dos pacotes para desserializar
+     * @return listaFinal -> uma lista com os pares (Nome de ficheiro, Metadados respetivos)
+     */
 
     public List<Map.Entry<String, FileTime>> deserializePackets(List<DatagramPacket> lp){
         List<Map.Entry<String, FileTime>> listaFinal = new ArrayList<>();
@@ -348,45 +333,40 @@ public class Metadados {
         return listaFinal;
     }
 
+    /**
+     * Método de comparação de metadados
+     * @param pasta String com o nome da pasta da comparação
+     * @param metaFile Lista com os metadados todos da pasta
+     * @return Um par do tipo (lista de ficheiros a pedir, lista de ficheiros a enviar)
+     */
+
     public Map.Entry<List<String>, List<String>> compare(String pasta , List<Map.Entry<String, FileTime>> metaFile) throws IOException {
         String filepath = pasta;
-        System.out.println(filepath);
         ArrayList<String> filesToAsk  = new ArrayList<>();
         ArrayList<String> filesToSend = new ArrayList<>();
         for (Map.Entry<String,FileTime> e : metaFile){
             try {
                 File f = new File(filepath+e.getKey());
-                System.out.println(f.toString());
                 if (e.getValue().to(TimeUnit.SECONDS) == 0);
                 else{
                     BasicFileAttributes attr = Files.readAttributes(Path.of(filepath + e.getKey()), BasicFileAttributes.class);
-                    //BasicFileAttributes attr = Files.readAttributes(Path.of(s +x), BasicFileAttributes.class);
-                    System.out.println("FODA-SE");
                     if (attr.lastModifiedTime().compareTo(e.getValue()) < 0){
                         filesToAsk.add(e.getKey());
                     }
                     else if(attr.lastModifiedTime().compareTo(e.getValue()) > 0){
-                        System.out.println(e.getValue());
-                        System.out.println(attr.lastModifiedTime());
 
-                        System.out.println("ola");
                         filesToSend.add(e.getKey());
                     }
                 }
             } catch(IOException exception){
-                System.out.println("Não deu para abrir o ficheiro");
                 filesToAsk.add(e.getKey());
             }
         }
         String directory = pasta;
         File f = new File(directory);
         List<String> nameMetaFile = metaFile.stream().map(Map.Entry::getKey).collect(Collectors.toList());
-        System.out.println("Ficheiro nos metadados: ");
-        System.out.println(metaFile.toString());
         for(String x : Objects.requireNonNull(f.list())){
-            System.out.println("Ficheiro na diretoria: " + x);
             if(!nameMetaFile.contains(x)){
-                System.out.println("Adicionei porque nao estava nos metadados");
                 filesToSend.add(x);
             }
         }

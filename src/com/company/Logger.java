@@ -15,12 +15,20 @@ public class Logger {
         this.logs = new ArrayList<>();
     }
 
+    /**
+     * Método que adiciona um Log à lista de Logs para escrita no ficheiro txt.
+     * @param newLog
+     */
     public void writeLog(Log newLog){
-        System.out.println(newLog);
+        System.out.println(newLog.toString());
         this.logs.add(newLog.clone());
 
     }
 
+    /**
+     * Método que coloca o resultado do logging do progama num ficheiro .txt acessível ao utilizador
+     * @throws IOException
+     */
     public void publishLogs() throws IOException {
         BufferedWriter writer;
         writer = new BufferedWriter(new FileWriter(this.file));
@@ -38,11 +46,4 @@ public class Logger {
         writer.close();
     }
 
-    public File getFile() {
-        return file;
-    }
-
-    public void setFile(File file) {
-        this.file = file;
-    }
 }
